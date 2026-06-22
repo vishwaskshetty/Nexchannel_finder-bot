@@ -1,22 +1,29 @@
 const SLUG_BY_KEY = {
-  movies: "movies-entertainment",
-  jobs: "jobs-internships",
   education: "education",
-  earning: "earning-freelance",
-  deals: "deals-offers",
+  jobs: "jobs",
+  ai: "ai",
+  tech: "tech",
   news: "news",
-  ai: "ai-tools",
-  gaming: "gaming",
+  deals: "deals",
   sports: "sports",
-  creators: "editing-creators",
+  gaming: "gaming",
+  creators: "creators",
   business: "business",
-  tech: "tech-telegram",
+  earning: "earning",
+  movies: "movies",
+  books: "books",
+  motivation: "motivation",
+  entertainment: "entertainment",
+  music: "music",
+  tools: "tools",
+  apps: "apps",
+  other: "other",
 } as const;
 
 export type CategoryKey = keyof typeof SLUG_BY_KEY;
 
 export function categorySlugFromKey(key: string): string | null {
-  return SLUG_BY_KEY[key as CategoryKey] ?? null;
+  return SLUG_BY_KEY[key as CategoryKey] ?? key;
 }
 
 export function categoryKeyFromSlug(slug: string): CategoryKey | null {
@@ -25,5 +32,5 @@ export function categoryKeyFromSlug(slug: string): CategoryKey | null {
       return key as CategoryKey;
     }
   }
-  return null;
+  return slug as CategoryKey;
 }

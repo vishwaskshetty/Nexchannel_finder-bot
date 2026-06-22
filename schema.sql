@@ -233,18 +233,25 @@ CREATE INDEX IF NOT EXISTS idx_owner_states_updated_at ON owner_states(updated_a
 CREATE INDEX IF NOT EXISTS idx_search_states_updated_at ON search_states(updated_at DESC);
 
 INSERT INTO categories (slug, name, sort_order) VALUES
-  ('movies-entertainment', '🎬 Movies & Entertainment', 10),
-  ('jobs-internships', '💼 Jobs & Internships', 20),
-  ('education', '📚 Education', 30),
-  ('earning-freelance', '💰 Earning & Freelance', 40),
-  ('deals-offers', '🛒 Deals & Offers', 50),
-  ('news', '📰 News', 60),
-  ('ai-tools', '🤖 AI Tools', 70),
+  ('education', '📚 Education', 10),
+  ('jobs', '💼 Jobs & Internships', 20),
+  ('ai', '🤖 AI', 30),
+  ('tech', '📱 Tech / Telegram', 40),
+  ('news', '📰 News', 50),
+  ('deals', '🛒 Deals', 60),
+  ('sports', '🏏 Sports', 70),
   ('gaming', '🎮 Gaming', 80),
-  ('sports', '🏏 Sports', 90),
-  ('editing-creators', '🎨 Editing / Creators', 100),
-  ('business', '🏢 Business', 110),
-  ('tech-telegram', '📱 Tech / Telegram', 120)
+  ('creators', '🎨 Creators', 90),
+  ('business', '🏢 Business', 100),
+  ('earning', '💰 Earning', 110),
+  ('movies', '🎬 Movies', 120),
+  ('books', '📖 Books', 130),
+  ('motivation', '💬 Motivation', 140),
+  ('entertainment', '🎭 Entertainment', 150),
+  ('music', '🎵 Music', 160),
+  ('tools', '🧰 Tools', 170),
+  ('apps', '📱 Apps', 180),
+  ('other', '🌐 Other', 190)
 ON CONFLICT(slug) DO UPDATE SET
   name = excluded.name,
   sort_order = excluded.sort_order;
@@ -264,23 +271,23 @@ INSERT INTO channels (
   featured,
   verified
 ) VALUES
-  (NULL, 'public', '@telegram', 'https://t.me/telegram', NULL, 'Telegram', 'Official Telegram channel listing.', 'tech-telegram', 'Mixed', 'telegram, official', 'approved', 1, 1),
-  (NULL, 'public', '@botnews', 'https://t.me/botnews', NULL, 'BotNews', 'Official Telegram bot platform news listing.', 'tech-telegram', 'Mixed', 'telegram, bots, official', 'approved', 1, 1),
-  (NULL, 'public', '@durov', 'https://t.me/durov', NULL, 'Durov', 'Official Pavel Durov channel listing.', 'tech-telegram', 'Mixed', 'telegram, official', 'approved', 1, 1),
-  (NULL, 'public', '@Best_AI_tools', 'https://t.me/Best_AI_tools', NULL, 'Best AI Tools', 'Featured AI tools channel listing.', 'ai-tools', 'Mixed', 'ai, tools', 'approved', 1, 0),
-  (NULL, 'public', '@AiIndiaJobs', 'https://t.me/AiIndiaJobs', NULL, 'AI India Jobs', 'Featured AI jobs channel listing.', 'jobs-internships', 'Mixed', 'ai, jobs', 'approved', 1, 0),
-  (NULL, 'public', '@jobs_and_internships_updates', 'https://t.me/jobs_and_internships_updates', NULL, 'Jobs and Internships Updates', 'Featured jobs and internships channel listing.', 'jobs-internships', 'Mixed', 'jobs, internships', 'approved', 1, 0),
+  (NULL, 'public', '@telegram', 'https://t.me/telegram', NULL, 'Telegram', 'Official Telegram channel listing.', 'tech', 'Mixed', 'telegram, official', 'approved', 1, 1),
+  (NULL, 'public', '@botnews', 'https://t.me/botnews', NULL, 'BotNews', 'Official Telegram bot platform news listing.', 'tech', 'Mixed', 'telegram, bots, official', 'approved', 1, 1),
+  (NULL, 'public', '@durov', 'https://t.me/durov', NULL, 'Durov', 'Official Pavel Durov channel listing.', 'tech', 'Mixed', 'telegram, official', 'approved', 1, 1),
+  (NULL, 'public', '@Best_AI_tools', 'https://t.me/Best_AI_tools', NULL, 'Best AI Tools', 'Featured AI tools channel listing.', 'ai', 'Mixed', 'ai, tools', 'approved', 1, 0),
+  (NULL, 'public', '@AiIndiaJobs', 'https://t.me/AiIndiaJobs', NULL, 'AI India Jobs', 'Featured AI jobs channel listing.', 'jobs', 'Mixed', 'ai, jobs', 'approved', 1, 0),
+  (NULL, 'public', '@jobs_and_internships_updates', 'https://t.me/jobs_and_internships_updates', NULL, 'Jobs and Internships Updates', 'Featured jobs and internships channel listing.', 'jobs', 'Mixed', 'jobs, internships', 'approved', 1, 0),
   (NULL, 'public', '@ksgindia', 'https://t.me/ksgindia', NULL, 'KSG India', 'Featured education channel listing.', 'education', 'Mixed', 'education', 'approved', 1, 0),
-  (NULL, 'public', '@Loot_Dealsx', 'https://t.me/Loot_Dealsx', NULL, 'Loot Dealsx', 'Featured deals and offers channel listing.', 'deals-offers', 'Mixed', 'deals, offers', 'approved', 1, 0),
-  (NULL, 'public', '@realshoppingdeals', 'https://t.me/realshoppingdeals', NULL, 'Real Shopping Deals', 'Featured shopping deals channel listing.', 'deals-offers', 'Mixed', 'shopping, deals', 'approved', 1, 0),
-  (NULL, 'public', '@dealdost', 'https://t.me/dealdost', NULL, 'Deal Dost', 'Featured deals channel listing.', 'deals-offers', 'Mixed', 'deals, offers', 'approved', 1, 0),
+  (NULL, 'public', '@Loot_Dealsx', 'https://t.me/Loot_Dealsx', NULL, 'Loot Dealsx', 'Featured deals and offers channel listing.', 'deals', 'Mixed', 'deals, offers', 'approved', 1, 0),
+  (NULL, 'public', '@realshoppingdeals', 'https://t.me/realshoppingdeals', NULL, 'Real Shopping Deals', 'Featured shopping deals channel listing.', 'deals', 'Mixed', 'shopping, deals', 'approved', 1, 0),
+  (NULL, 'public', '@dealdost', 'https://t.me/dealdost', NULL, 'Deal Dost', 'Featured deals channel listing.', 'deals', 'Mixed', 'deals, offers', 'approved', 1, 0),
   (NULL, 'public', '@indian_cricket', 'https://t.me/indian_cricket', NULL, 'Indian Cricket', 'Featured sports channel listing.', 'sports', 'Mixed', 'cricket, sports', 'approved', 1, 0),
   (NULL, 'public', '@cricketkidiwaniTG', 'https://t.me/cricketkidiwaniTG', NULL, 'Cricket Ki Diwani TG', 'Featured cricket channel listing.', 'sports', 'Mixed', 'cricket, sports', 'approved', 1, 0),
   (NULL, 'public', '@gamingdiscovery', 'https://t.me/gamingdiscovery', NULL, 'Gaming Discovery', 'Featured gaming channel listing.', 'gaming', 'Mixed', 'gaming', 'approved', 1, 0),
   (NULL, 'public', '@cinderellagaming321', 'https://t.me/cinderellagaming321', NULL, 'Cinderella Gaming 321', 'Featured gaming channel listing.', 'gaming', 'Mixed', 'gaming', 'approved', 1, 0),
-  (NULL, 'public', '@ezedit', 'https://t.me/ezedit', NULL, 'Ez Edit', 'Featured editing and creators channel listing.', 'editing-creators', 'Mixed', 'editing, creators', 'approved', 1, 0),
-  (NULL, 'public', '@tipseditor_official', 'https://t.me/tipseditor_official', NULL, 'Tips Editor Official', 'Featured editing channel listing.', 'editing-creators', 'Mixed', 'editing, creators', 'approved', 1, 0),
-  (NULL, 'public', '@tamizhantechofficial', 'https://t.me/tamizhantechofficial', NULL, 'Tamizhan Tech Official', 'Featured tech channel listing.', 'tech-telegram', 'Mixed', 'tech, telegram', 'approved', 1, 0)
+  (NULL, 'public', '@ezedit', 'https://t.me/ezedit', NULL, 'Ez Edit', 'Featured editing and creators channel listing.', 'creators', 'Mixed', 'editing, creators', 'approved', 1, 0),
+  (NULL, 'public', '@tipseditor_official', 'https://t.me/tipseditor_official', NULL, 'Tips Editor Official', 'Featured editing channel listing.', 'creators', 'Mixed', 'editing, creators', 'approved', 1, 0),
+  (NULL, 'public', '@tamizhantechofficial', 'https://t.me/tamizhantechofficial', NULL, 'Tamizhan Tech Official', 'Featured tech channel listing.', 'tech', 'Mixed', 'tech, telegram', 'approved', 1, 0)
 ON CONFLICT(channel_username) DO UPDATE SET
   channel_type = excluded.channel_type,
   channel_link = excluded.channel_link,

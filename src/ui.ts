@@ -283,7 +283,11 @@ export function channelListText(
   hasNext: boolean,
 ): string {
   if (channels.length === 0) {
-    return [`📂 ${category.name}`, "", EMPTY_STATE_TEXT].join("\n");
+    return [
+      "📭 𝗡𝗼 𝗖𝗵𝗮𝗻𝗻𝗲𝗹𝘀 𝗙𝗼𝘂𝗻𝗱",
+      "",
+      "No approved channels are available in this category yet.",
+    ].join("\n");
   }
 
   return formatChannelList(
@@ -315,6 +319,17 @@ export function channelListKeyboard(
   page: number,
   hasNext: boolean,
 ): TelegramInlineKeyboardMarkup {
+  if (channels.length === 0) {
+    return {
+      inline_keyboard: [
+        [
+          { text: "📂 Categories", callback_data: "categories" },
+          { text: "🏠 Home", callback_data: "home" },
+        ],
+      ],
+    };
+  }
+
   const categoryKey = categoryKeyFromSlug(slug) ?? "tech";
   const rows: KeyboardRows = buttonRows(
     channels.map((channel, index) => ({

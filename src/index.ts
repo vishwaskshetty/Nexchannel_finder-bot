@@ -322,6 +322,16 @@ async function handleMessage(ctx: BotContext, message: TelegramMessage): Promise
     return;
   }
 
+  if (command?.name === "debugcategories") {
+    await handleDebugCategoriesCommand(ctx, message);
+    return;
+  }
+
+  if (command?.name === "debugrecentchannels") {
+    await handleDebugRecentChannelsCommand(ctx, message);
+    return;
+  }
+
   if (command?.name === "postleaderboard") {
     await handlePostLeaderboardCommand(ctx, message);
     return;
@@ -990,4 +1000,96 @@ async function secretsEqual(provided: string, expected: string): Promise<boolean
     crypto.subtle.digest("SHA-256", encoder.encode(expected)),
   ]);
   return crypto.subtle.timingSafeEqual(providedHash, expectedHash);
+}
+
+async function handleDebugCategoriesCommand(
+  ctx: BotContext,
+  message: TelegramMessage,
+): Promise<void> {
+  const userId = message.from?.id;
+  if (!userId || !ctx.adminIds.has(userId)) {
+    await ctx.telegram.sendMessage(message.chat.id, "❌ Admin access only.");
+    return;
+  }
+
+  try {
+    const categories = [
+      "education",
+      "jobs",
+      "ai",
+      "tech",
+      "news",
+      "deals",
+      "sports",
+      "gaming",
+      "creators",
+      "business",
+      "earning",
+      "movies",
+      "books",
+      "motivation",
+      "entertainment",
+      "music",
+      "tools",
+      "apps",
+      "other",
+    ];
+
+    const counts: string[] = [];
+    for (const cat of categories) {
+      const countRes = await ctx.env.DB.prepare(
+        "SELECT COUNT(*) AS count FROM channels WHERE category = ? AND status = 'approved'",
+      )
+        .bind(cat)
+        .first<{ count: number }>();
+      const count = countRes?.count ?? 0;
+      counts.push(`${cat}: ${count}`);
+    }
+
+    const replyText = [
+      "📊 Category Counts",
+      "",
+      ...counts,
+    ].join("\n");
+
+    await ctx.telegram.sendMessage(message.chat.id, replyText);
+  } catch (error) {
+    console.error("Error in debugcategories:", error);
+    await ctx.telegram.sendMessage(
+      message.chat.id,
+      `❌ Error: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
+async function handleDebugRecentChannelsCommand(
+  ctx: BotContext,
+  message: TelegramMessage,
+): Promise<void> {
+  const userId = message.from?.id;
+  if (!userId || !ctx.adminIds.has(userId)) {
+    await ctx.telegram.sendMessage(message.chat.id, "❌ Admin access only.");
+    return;
+  }
+
+  try {
+    const result = await ctx.env.DB.prepare(
+      "SELECT id, title, category, language, status FROM channels WHERE status = 'approved' ORDER BY id DESC LIMIT 20",
+    ).all<{ id: number; title: string; category: string; language: string; status: string }>();
+
+    const rows = result.results ?? [];
+    if (rows.length === 0) {
+      await ctx.telegram.sendMessage(message.chat.id, "No approved channels found.");
+      return;
+    }
+
+    const lines = rows.map((r) => `${r.id}, ${r.title}, ${r.category}, ${r.language}, ${r.status}`);
+    await ctx.telegram.sendMessage(message.chat.id, lines.join("\n"));
+  } catch (error) {
+    console.error("Error in debugrecentchannels:", error);
+    await ctx.telegram.sendMessage(
+      message.chat.id,
+      `❌ Error: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
 }

@@ -986,7 +986,7 @@ export async function listUserChannels(
     SELECT ${CHANNEL_SELECT}
     FROM channels ch
     JOIN categories cat ON cat.slug = ch.category
-    WHERE ch.owner_telegram_id = ?
+    WHERE ch.owner_telegram_id = ? AND ch.status = 'approved'
     ORDER BY ch.updated_at DESC, ch.created_at DESC
     LIMIT ? OFFSET ?
     `,
