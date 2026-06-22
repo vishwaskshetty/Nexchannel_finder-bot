@@ -1744,19 +1744,23 @@ export async function importChannel(
 }
 
 export async function getImportStats(env: Env) {
-  const [total, publicCh, privateCh, skips, lastBatch] = await Promise.all([
+  const [total, publicCh, privateCh, approvedCh, pendingCh, skips, lastBatch] = await Promise.all([
     env.DB.prepare(`SELECT count(*) as c FROM channels`).first<{c: number}>(),
     env.DB.prepare(`SELECT count(*) as c FROM channels WHERE channel_type = 'public'`).first<{c: number}>(),
     env.DB.prepare(`SELECT count(*) as c FROM channels WHERE channel_type = 'private'`).first<{c: number}>(),
+    env.DB.prepare(`SELECT count(*) as c FROM channels WHERE status = 'approved'`).first<{c: number}>(),
+    env.DB.prepare(`SELECT count(*) as c FROM channels WHERE status = 'pending'`).first<{c: number}>(),
     env.DB.prepare(`SELECT count(*) as c FROM channel_import_skips`).first<{c: number}>(),
-    env.DB.prepare(`SELECT created_at FROM channel_import_batches ORDER BY created_at DESC LIMIT 1`).first<{created_at: string}>(),
+    env.DB.prepare(`SELECT total_found, total_imported, total_skipped, created_at FROM channel_import_batches ORDER BY created_at DESC LIMIT 1`).first<{total_found: number, total_imported: number, total_skipped: number, created_at: string}>(),
   ]);
 
   return {
     total: total?.c ?? 0,
     public: publicCh?.c ?? 0,
     private: privateCh?.c ?? 0,
+    approved: approvedCh?.c ?? 0,
+    pending: pendingCh?.c ?? 0,
     skips: skips?.c ?? 0,
-    lastBatchDate: lastBatch?.created_at ?? 'Never',
+    lastBatch: lastBatch || null,
   };
 }

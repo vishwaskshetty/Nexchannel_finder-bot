@@ -33,4 +33,4 @@ YOUTUBE_CHANNEL_LINK = "https://www.youtube.com/channel/UCjq-Zx6uTK1h8skXd8MoOHg
 # Runs Sunday 7:00 PM IST
 
 [triggers]
-crons = ["30 13 * * 0"]
+crons = ["30 13 * * SUN"]

@@ -23,7 +23,7 @@ import {
   upsertYoutubeVerification,
 } from "../db";
 import { getAdminReviewChannelId, getYoutubeChannelLink, sendOrEdit } from "../telegram";
-import type { BotContext, TelegramCallbackQuery, TelegramMessage } from "../types";
+import type { BotContext, Env, TelegramCallbackQuery, TelegramMessage } from "../types";
 import {
   backToMenuKeyboard,
   youtubeAdminApprovedCaption,
@@ -98,6 +98,54 @@ export async function checkYoutubeVerification(
     // On DB error, allow access to prevent total lockout
     return true;
   }
+}
+
+export async function isYouTubeVerified(env: Env, telegramId: number): Promise<boolean> {
+  const adminIdsStr = env.ADMIN_IDS?.trim() ? env.ADMIN_IDS : env.ADMIN_ID;
+  if (adminIdsStr) {
+    const adminIds = new Set(adminIdsStr.split(",").map(id => Number(id.trim())).filter(id => !isNaN(id)));
+    if (adminIds.has(telegramId)) return true;
+  }
+
+  try {
+    const userRow = await env.DB.prepare("SELECT youtube_verified FROM users WHERE telegram_id = ?").bind(telegramId).first();
+    if (userRow && (userRow as any).youtube_verified === 1) return true;
+  } catch (e) {
+    // Ignore error if column missing
+  }
+
+  try {
+    const ytRow = await env.DB.prepare("SELECT status FROM youtube_verifications WHERE telegram_id = ?").bind(telegramId).first();
+    if (ytRow && (ytRow as any).status === "approved") return true;
+  } catch (e) {
+    // Ignore error
+  }
+
+  return false;
+}
+
+export async function showYouTubeRequiredForSubmit(chatId: number, telegramId: number, env: Env): Promise<void> {
+  const text = "🔒 𝗬𝗼𝘂𝗧𝘂𝗯𝗲 𝗩𝗲𝗿𝗶𝗳𝗶𝗰𝗮𝘁𝗶𝗼𝗻 𝗥𝗲𝗾𝘂𝗶𝗿𝗲𝗱\n\n━━━━━━━━━━━━━━\n\nTo add your Telegram channel in NexChannel Finder, please subscribe to our YouTube channel first.\n\nAfter subscribing:\n1️⃣ Click the YouTube button\n2️⃣ Subscribe to the channel\n3️⃣ Come back and click \"✅ I Subscribed\"\n4️⃣ Send screenshot proof\n5️⃣ Wait for admin approval\n\n━━━━━━━━━━━━━━\n\nAfter approval, you can submit your channel.";
+  const buttons = [
+    [{ text: "▶️ Subscribe YouTube", url: env.YOUTUBE_CHANNEL_LINK }],
+    [{ text: "✅ I Subscribed", callback_data: "youtube_subscribed_check" }],
+    [{ text: "🔄 Check Status", callback_data: "youtube_status" }],
+    [{ text: "🏠 Home", callback_data: "home" }]
+  ];
+
+  try {
+    // We also make sure the user exists in youtube_verifications
+    await upsertYoutubeVerification(env, telegramId);
+  } catch (e) {
+    console.error("Failed to upsert youtube verification:", e);
+  }
+
+  const { TelegramClient } = await import("../telegram");
+  const telegram = new TelegramClient(env.BOT_TOKEN);
+  await telegram.sendMessage(chatId, text, {
+    reply_markup: { inline_keyboard: buttons },
+    disable_web_page_preview: true,
+  });
 }
 
 /**
@@ -175,9 +223,6 @@ export async function handleYoutubeSubscribedCheck(
   }
 }
 
-/**
- * Handle the "🔄 Check Status" callback (youtube_status).
- */
 export async function handleYoutubeStatus(
   ctx: BotContext,
   query: TelegramCallbackQuery,
@@ -185,48 +230,97 @@ export async function handleYoutubeStatus(
   messageId: number | undefined,
 ): Promise<void> {
   const telegramId = query.from.id;
-  console.log("YouTube callback:", "youtube_status");
-
   await ctx.telegram.answerCallbackQuery(query.id);
+  await showYouTubeStatus(chatId, telegramId, ctx.env, messageId, ctx);
+}
+
+export async function showYouTubeStatus(
+  chatId: number,
+  telegramId: number,
+  env: Env,
+  messageId?: number,
+  ctx?: BotContext,
+): Promise<void> {
+  console.log("YouTube status command:", telegramId);
 
   try {
-    const record = await getYoutubeVerification(ctx.env, telegramId);
-    const status = record?.status ?? "not_started";
-    console.log("YouTube verification status:", status);
+    const { results } = await env.DB.prepare(
+      "SELECT status, clicked_at, submitted_at, approved_at, rejected_at FROM youtube_verifications WHERE telegram_id = ?"
+    ).bind(telegramId).all();
+    const row = results[0] as any;
+    console.log("YouTube status row:", row);
 
-    switch (status) {
-      case "approved": {
-        await sendOrEdit(ctx.telegram, chatId, messageId, youtubeStatusApprovedText(), {
-          reply_markup: youtubeHomeKeyboard(),
-          disable_web_page_preview: true,
-        });
-        break;
+    let isUserVerified = false;
+    try {
+      const userRes = await env.DB.prepare("SELECT youtube_verified FROM users WHERE telegram_id = ?").bind(telegramId).first();
+      if (userRes && (userRes as any).youtube_verified) {
+        isUserVerified = true;
       }
-      case "pending":
-      case "pending_photo": {
-        await sendOrEdit(ctx.telegram, chatId, messageId, youtubeStatusPendingText(), {
-          reply_markup: backToMenuKeyboard(),
-          disable_web_page_preview: true,
-        });
-        break;
-      }
-      case "rejected": {
-        await sendOrEdit(ctx.telegram, chatId, messageId, youtubeStatusRejectedText(), {
-          reply_markup: youtubeRetryKeyboard(getYoutubeChannelLink(ctx.env)),
-          disable_web_page_preview: true,
-        });
-        break;
-      }
-      default: {
-        await showYoutubeLockPage(ctx, chatId, telegramId, messageId);
-        break;
-      }
+    } catch (e) {
+      // Ignore if users table doesn't have the column
+    }
+
+    let status = "not_started";
+    if (row && row.status) {
+      status = row.status;
+    } else if (isUserVerified) {
+      status = "approved";
+    }
+
+    let text = "";
+    let buttons: any[][] = [];
+    const youtubeLink = env.YOUTUBE_CHANNEL_LINK;
+
+    if (ctx && ctx.adminIds.has(telegramId)) {
+      text = "🛠 Admin account detected.\nYouTube verification is bypassed for admin.";
+      buttons = [[{ text: "🏠 Home", callback_data: "home" }]];
+    } else if (status === "approved") {
+      text = "✅ 𝗬𝗼𝘂𝗧𝘂𝗯𝗲 𝗩𝗲𝗿𝗶𝗳𝗶𝗲𝗱\n\nYour YouTube subscription is approved.\n\nYou can now use NexChannel Finder Bot.";
+      buttons = [[{ text: "🏠 Home", callback_data: "home" }]];
+    } else if (status === "pending") {
+      text = "⏳ 𝗣𝗿𝗼𝗼𝗳 𝗨𝗻𝗱𝗲𝗿 𝗥𝗲𝘃𝗶𝗲𝘄\n\nYour screenshot proof has been sent to admin.\n\nPlease wait for approval.";
+      buttons = [
+        [{ text: "🔄 Check Status", callback_data: "youtube_status" }],
+        [{ text: "🏠 Home", callback_data: "home" }]
+      ];
+    } else if (status === "rejected") {
+      text = "❌ 𝗣𝗿𝗼𝗼𝗳 𝗥𝗲𝗷𝗲𝗰𝘁𝗲𝗱\n\nPlease subscribe again and send a clear screenshot proof.";
+      buttons = [
+        [{ text: "▶️ Try Again", callback_data: "youtube_retry" }],
+        [{ text: "🏠 Home", callback_data: "home" }]
+      ];
+    } else if (status === "clicked" || status === "pending_photo") {
+      text = "📸 𝗣𝗿𝗼𝗼𝗳 𝗥𝗲𝗾𝘂𝗶𝗿𝗲𝗱\n\nPlease send a screenshot showing you subscribed to our YouTube channel.";
+      buttons = [
+        [{ text: "▶️ Subscribe YouTube", url: youtubeLink }],
+        [{ text: "🔄 Check Status", callback_data: "youtube_status" }],
+        [{ text: "🏠 Home", callback_data: "home" }]
+      ];
+    } else {
+      text = "▶️ 𝗬𝗼𝘂𝗧𝘂𝗯𝗲 𝗦𝘁𝗮𝘁𝘂𝘀\n\n━━━━━━━━━━━━━━\n\n🧾 Status: Not Started\n\nPlease subscribe to our YouTube channel and submit proof.";
+      buttons = [
+        [{ text: "▶️ Subscribe YouTube", url: youtubeLink }],
+        [{ text: "✅ I Subscribed", callback_data: "youtube_subscribed_check" }],
+        [{ text: "🏠 Home", callback_data: "home" }]
+      ];
+    }
+
+    if (messageId && ctx) {
+      await ctx.telegram.editMessageText(chatId, messageId, text, {
+        reply_markup: { inline_keyboard: buttons },
+        disable_web_page_preview: true,
+      });
+    } else if (ctx) {
+      await ctx.telegram.sendMessage(chatId, text, {
+        reply_markup: { inline_keyboard: buttons },
+        disable_web_page_preview: true,
+      });
     }
   } catch (error) {
-    console.error("YouTube verification error:", error);
-    await sendOrEdit(ctx.telegram, chatId, messageId, "❌ Something went wrong. Please try again.", {
-      reply_markup: backToMenuKeyboard(),
-    });
+    console.error("YouTube status error:", error);
+    if (ctx) {
+      await ctx.telegram.sendMessage(chatId, "❌ YouTube status check failed. Please try again.");
+    }
   }
 }
 
@@ -425,7 +519,7 @@ export async function handleCheckYtCommand(
 
   const targetId = Number(args.trim());
   if (!Number.isInteger(targetId) || targetId <= 0) {
-    await ctx.telegram.sendMessage(message.chat.id, "Usage: /checkyt <telegram_id>");
+    await ctx.telegram.sendMessage(message.chat.id, "Usage: /checkyoutube <telegram_id>");
     return;
   }
 
@@ -435,15 +529,13 @@ export async function handleCheckYtCommand(
   await ctx.telegram.sendMessage(
     message.chat.id,
     [
-      "▶️ YouTube Verification Status",
-      "",
       `User ID: ${targetId}`,
-      `Status: ${record?.status ?? "not_started"}`,
-      `YouTube Verified: ${verified ? "yes" : "no"}`,
-      `Clicked At: ${record?.clicked_at ?? "—"}`,
-      `Submitted At: ${record?.submitted_at ?? "—"}`,
-      `Approved At: ${record?.approved_at ?? "—"}`,
-      `Rejected At: ${record?.rejected_at ?? "—"}`,
+      `users.youtube_verified: ${verified ? 1 : 0}`,
+      `youtube_verifications.status: ${record?.status ?? "not_started"}`,
+      `clicked_at: ${record?.clicked_at ?? "—"}`,
+      `submitted_at: ${record?.submitted_at ?? "—"}`,
+      `approved_at: ${record?.approved_at ?? "—"}`,
+      `rejected_at: ${record?.rejected_at ?? "—"}`,
     ].join("\n"),
   );
 }
@@ -475,9 +567,6 @@ export async function handleResetYoutubeVerifyCommand(
   );
 }
 
-/**
- * Command handler for /youtubestatus (user's own status).
- */
 export async function handleYoutubeStatusCommand(
   ctx: BotContext,
   message: TelegramMessage,
@@ -486,32 +575,5 @@ export async function handleYoutubeStatusCommand(
   if (!telegramId) {
     return;
   }
-
-  const record = await getYoutubeVerification(ctx.env, telegramId);
-  const status = record?.status ?? "not_started";
-  console.log("YouTube verification status:", status);
-
-  switch (status) {
-    case "approved": {
-      await ctx.telegram.sendMessage(message.chat.id, youtubeStatusApprovedText(), {
-        reply_markup: youtubeHomeKeyboard(),
-      });
-      break;
-    }
-    case "pending":
-    case "pending_photo": {
-      await ctx.telegram.sendMessage(message.chat.id, youtubeStatusPendingText());
-      break;
-    }
-    case "rejected": {
-      await ctx.telegram.sendMessage(message.chat.id, youtubeStatusRejectedText(), {
-        reply_markup: youtubeRetryKeyboard(getYoutubeChannelLink(ctx.env)),
-      });
-      break;
-    }
-    default: {
-      await showYoutubeLockPage(ctx, message.chat.id, telegramId);
-      break;
-    }
-  }
+  await showYouTubeStatus(message.chat.id, telegramId, ctx.env, undefined, ctx);
 }

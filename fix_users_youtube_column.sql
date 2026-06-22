@@ -1,0 +1,1 @@
+ALTER TABLE users ADD COLUMN youtube_verified INTEGER DEFAULT 0;

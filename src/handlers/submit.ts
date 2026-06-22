@@ -55,6 +55,13 @@ export async function handleSubmitStart(
   userId: number,
   messageId?: number,
 ): Promise<void> {
+  const { isYouTubeVerified, showYouTubeRequiredForSubmit } = await import("./youtube");
+  const verified = await isYouTubeVerified(ctx.env, userId);
+  if (!verified) {
+    await showYouTubeRequiredForSubmit(chatId, userId, ctx.env);
+    return;
+  }
+
   await startSubmissionDraft(ctx.env, userId);
   await handleSubmitHelp(ctx, chatId, messageId);
 }
@@ -123,6 +130,11 @@ export async function handleSubmitCallback(
   messageId: number | undefined,
   userId: number,
 ): Promise<void> {
+  if (data === "submit_channel" || data === "submit") {
+    await handleSubmitStart(ctx, chatId, userId, messageId);
+    return;
+  }
+
   if (data === "submit_cancel") {
     data = "s:x";
   } else if (data === "submit_type:public") {

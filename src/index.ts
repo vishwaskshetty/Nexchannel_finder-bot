@@ -363,7 +363,7 @@ async function handleMessage(ctx: BotContext, message: TelegramMessage): Promise
   }
 
   // Admin-only YouTube management commands
-  if (command?.name === "checkyt") {
+  if (command?.name === "checkyoutube" || command?.name === "checkyt") {
     await handleCheckYtCommand(ctx, message, command.args);
     return;
   }
@@ -404,7 +404,7 @@ async function handleMessage(ctx: BotContext, message: TelegramMessage): Promise
     return;
   }
 
-  if (command?.name === "submit") {
+  if (command?.name === "submit" || command?.name === "addchannel" || command?.name === "add") {
     await handleSubmitCommand(ctx, message, command.args);
     return;
   }
@@ -602,6 +602,30 @@ async function handleCallbackQuery(ctx: BotContext, query: TelegramCallbackQuery
     return;
   }
 
+  if (data === "import_paste_start") {
+    await ctx.telegram.answerCallbackQuery(query.id);
+    if (query.message) {
+      await handleImportPasteCommand(ctx, {
+        from: query.from,
+        chat: query.message.chat,
+      } as TelegramMessage);
+    }
+    return;
+  }
+
+  if (data === "import_cancel") {
+    await ctx.telegram.answerCallbackQuery(query.id, "Import cancelled.");
+    await ctx.env.DB.prepare("DELETE FROM admin_states WHERE telegram_id = ?").bind(userId).run();
+    if (chatId && messageId) {
+      await ctx.telegram.editMessageText(
+        chatId,
+        messageId,
+        "❌ Import cancelled."
+      );
+    }
+    return;
+  }
+
   if (data.startsWith("report_reason:")) {
     await handleReportReasonCallback(ctx, query, chatId, messageId);
     return;
@@ -720,7 +744,7 @@ async function handleCallbackQuery(ctx: BotContext, query: TelegramCallbackQuery
     return;
   }
 
-  if (data === "submit") {
+  if (data === "submit" || data === "submit_channel" || data === "add_channel" || data === "start_submit") {
     await handleSubmitStart(ctx, chatId, userId, messageId);
     return;
   }
@@ -1007,7 +1031,7 @@ async function handleDebugCategoriesCommand(
   message: TelegramMessage,
 ): Promise<void> {
   const userId = message.from?.id;
-  if (!userId || !ctx.adminIds.has(userId)) {
+  if (userId !== 6059191947) {
     await ctx.telegram.sendMessage(message.chat.id, "❌ Admin access only.");
     return;
   }
@@ -1067,7 +1091,7 @@ async function handleDebugRecentChannelsCommand(
   message: TelegramMessage,
 ): Promise<void> {
   const userId = message.from?.id;
-  if (!userId || !ctx.adminIds.has(userId)) {
+  if (userId !== 6059191947) {
     await ctx.telegram.sendMessage(message.chat.id, "❌ Admin access only.");
     return;
   }

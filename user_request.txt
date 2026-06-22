@@ -1,0 +1,147 @@
+<USER_REQUEST>
+Fix TelegramChannels import 403 error in NexChannel Finder Bot.
+
+Current issue:
+When I run:
+
+/importtelegramchannels https://telegramchannels.me/ranking?language=hi&category=all&type=all
+
+Bot replies:
+❌ Error: HTTP Error: 403
+
+Reason:
+TelegramChannels.me is blocking automated fetch requests from Cloudflare Worker.
+
+Do not try to bypass the website with proxies or aggressive scraping.
+
+Main fix:
+
+1. Keep /importtelegramchannels, but if HTTP status is 403, show a helpful fallback message.
+2. Improve /importpaste so I can copy the ranking page text manually and paste it into bot.
+3. Parse pasted TelegramChannels ranking text and import maximum safe channels into D1.
+
+==================================================
+
+1. FIX /importtelegramchannels 403 HANDLING
+   ==================================================
+
+When fetch returns 403, do not show only:
+❌ Error: HTTP Error: 403
+
+Show this message:
+
+⚠️ 𝗦𝗼𝘂𝗿𝗰𝗲 𝗕𝗹𝗼𝗰𝗸𝗲𝗱 𝗔𝘂𝘁𝗼 𝗙𝗲𝘁𝗰𝗵
+
+TelegramChannels blocked the automatic import request.
+
+Use manual import instead:
+
+1️⃣ Open the ranking page in browser
+2️⃣ Select all channel ranking text
+3️⃣ Copy it
+4️⃣ Send /importpaste
+5️⃣ Paste the copied text here
+
+This method imports channels safely without website fetch blocking.
+
+Buttons:
+📥 Import by Paste -> callback_data: import_paste_start
+🏠 Home -> callback_data: home
+
+==================================================
+2. ADD /importpaste FLOW
+========================
+
+Admin command:
+
+/importpaste
+
+Only admin ID 6059191947 can use it.
+
+When admin sends /importpaste, bot should reply:
+
+📥 𝗣𝗮𝘀𝘁𝗲 𝗜𝗺𝗽𝗼𝗿𝘁 𝗠𝗼𝗱𝗲
+
+Paste the TelegramChannels ranking text now.
+
+I will extract:
+• Channel name
+• Username
+• Language
+• Category
+• Subscribers
+
+Unsafe channels will be skipped automatically.
+
+Buttons:
+❌ Cancel -> callback_data: import_cancel
+
+Se
+<truncated 3824 bytes>
+𝗼𝗺𝗽𝗹𝗲𝘁𝗲
+
+━━━━━━━━━━━━━━
+
+🔎 Found: <found>
+✅ Imported: <imported>
+♻️ Updated: <updated>
+⏭ Skipped: <skipped>
+
+━━━━━━━━━━━━━━
+
+Use /debugcategories to check category counts.
+Use /debugrecentchannels to check recent channels.
+
+==================================================
+9. ADD CALLBACK
+===============
+
+Add callback:
+import_paste_start
+
+It should start same flow as /importpaste.
+
+Add callback:
+import_cancel
+
+It should clear import state.
+
+==================================================
+10. DEBUG COMMANDS
+==================
+
+Ensure these admin-only commands work:
+
+/debugcategories
+/debugrecentchannels
+/importstats
+
+==================================================
+11. IMPORTANT
+=============
+
+Do not remove /importtelegramchannels.
+Just make it fall back nicely on 403.
+
+Do not delete existing channels.
+Do not reset database.
+Do not import unsafe channels.
+Do not expose private invite links.
+Always answer callback queries.
+Fix TypeScript errors.
+
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-06-22T16:04:51+05:30.
+
+The user's current state is as follows:
+Active Document: c:\Users\Vishwas shetty\nexchannel-finder-bot\nexchannel-finder-bot\src\index.ts (LANGUAGE_TYPESCRIPT)
+Cursor is on line: 1
+Other open documents:
+- c:\Users\Vishwas shetty\nexchannel-finder-bot\nexchannel-finder-bot\dist\index.js (LANGUAGE_JAVASCRIPT)
+- c:\Users\Vishwas shetty\nexchannel-finder-bot\nexchannel-finder-bot\src\db.ts (LANGUAGE_TYPESCRIPT)
+- c:\Users\Vishwas shetty\nexchannel-finder-bot\nexchannel-finder-bot\src\index.ts (LANGUAGE_TYPESCRIPT)
+</ADDITIONAL_METADATA>
+<USER_SETTINGS_CHANGE>
+The user changed setting `Model Selection` from Gemini 3.5 Flash (Medium) to Gemini 3.1 Pro (High). No need to comment on this change if the user doesn't ask about it. If reporting what model you are, please use a human readable name instead of the exact string.
+</USER_SETTINGS_CHANGE>

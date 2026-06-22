@@ -145,7 +145,11 @@ export const CATEGORIES: CategoryConfig[] = [
 export function mapExternalCategory(externalStr: string): string {
   const lower = externalStr.toLowerCase().trim();
   for (const cat of CATEGORIES) {
-    if (cat.externalMappings.some(m => m.toLowerCase() === lower)) {
+    if (cat.externalMappings.some(m => {
+      if (m.toLowerCase() === lower) return true;
+      const regex = new RegExp(`\\b${m.toLowerCase()}\\b`);
+      return regex.test(lower);
+    })) {
       return cat.key;
     }
   }

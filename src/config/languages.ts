@@ -46,7 +46,11 @@ export function parseLanguage(langStr: string): string {
   if (lower.startsWith('tr') || lower.startsWith('tur')) return "Turkish";
   if (lower === 'mixed' || lower === 'all') return "Mixed";
 
-  const directMatch = LANGUAGES.find(l => l.toLowerCase() === lower);
+  const directMatch = LANGUAGES.find(l => {
+    if (l.toLowerCase() === lower) return true;
+    const regex = new RegExp(`\\b${l.toLowerCase()}\\b`);
+    return regex.test(lower);
+  });
   if (directMatch) return directMatch;
 
   return "Other";

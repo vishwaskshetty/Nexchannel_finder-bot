@@ -21,12 +21,22 @@ export async function handleImportStatsCommand(
   message: TelegramMessage,
 ): Promise<void> {
   const adminId = message.from?.id;
-  if (!adminId || !ctx.adminIds.has(adminId)) {
+  if (adminId !== 6059191947) {
     await ctx.telegram.sendMessage(message.chat.id, "❌ Admin access only.");
     return;
   }
 
   const stats = await getImportStats(ctx.env);
+
+  let lastBatchText = "None";
+  if (stats.lastBatch) {
+    lastBatchText = [
+      `Found: ${stats.lastBatch.total_found}`,
+      `Imported: ${stats.lastBatch.total_imported}`,
+      `Skipped: ${stats.lastBatch.total_skipped}`,
+      `Date: ${stats.lastBatch.created_at}`
+    ].join(", ");
+  }
 
   const text = [
     "📊 𝗜𝗺𝗽𝗼𝗿𝘁 𝗦𝘁𝗮𝘁𝘀",
@@ -34,12 +44,14 @@ export async function handleImportStatsCommand(
     `𝗧𝗼𝘁𝗮𝗹 𝗖𝗵𝗮𝗻𝗻𝗲𝗹𝘀: ${stats.total}`,
     `🌍 𝗣𝘂𝗯𝗹𝗶𝗰: ${stats.public}`,
     `🔐 𝗣𝗿𝗶𝘃𝗮𝘁𝗲: ${stats.private}`,
+    `✅ 𝗔𝗽𝗽𝗿𝗼𝘃𝗲𝗱: ${stats.approved}`,
+    `⏳ 𝗣𝗲𝗻𝗱𝗶𝗻𝗴: ${stats.pending}`,
     "",
     `📂 𝗖𝗮𝘁𝗲𝗴𝗼𝗿𝗶𝗲𝘀: ${CATEGORIES.length}`,
     `🗣 𝗟𝗮𝗻𝗴𝘂𝗮𝗴𝗲𝘀: ${LANGUAGES.length}`,
     "",
-    `🚫 𝗦𝗸𝗶𝗽𝗽𝗲𝗱/𝗨𝗻𝘀𝗮𝗳𝗲: ${stats.skips}`,
-    `🕒 𝗟𝗮𝘀𝘁 𝗜𝗺𝗽𝗼𝗿𝘁: ${stats.lastBatchDate}`,
+    `🚫 𝗦𝗸𝗶𝗽𝗽𝗲𝗱/𝗨𝗻𝘀𝗮𝗳𝗲 (Total Skips): ${stats.skips}`,
+    `🕒 𝗟𝗮𝘀𝘁 𝗜𝗺𝗽𝗼𝗿𝘁: ${lastBatchText}`,
   ].join("\n");
 
   await ctx.telegram.sendMessage(message.chat.id, text);
@@ -47,13 +59,23 @@ export async function handleImportStatsCommand(
 
 // ─── TELEGRAMCHANNELS.ME IMPORT ──────────────────────────────────────────────
 
+function decodeHtmlEntities(str: string): string {
+  return str
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#039;/g, "'")
+    .replace(/&#x27;/g, "'");
+}
+
 export async function handleImportTelegramChannelsCommand(
   ctx: BotContext,
   message: TelegramMessage,
   args: string,
 ): Promise<void> {
   const adminId = message.from?.id;
-  if (!adminId || !ctx.adminIds.has(adminId)) {
+  if (adminId !== 6059191947) {
     await ctx.telegram.sendMessage(message.chat.id, "❌ Admin access only.");
     return;
   }
@@ -64,24 +86,192 @@ export async function handleImportTelegramChannelsCommand(
     return;
   }
 
-  await ctx.telegram.sendMessage(message.chat.id, "⏳ Fetching and parsing. This may take a moment...");
+  await ctx.telegram.sendMessage(message.chat.id, "⏳ Fetching and crawling up to 20 pages. This may take a moment...");
 
   try {
-    const response = await fetch(url, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-      },
-    });
+    const batchId = generateShortId();
+    console.log("[Importer] Creating batch in D1 database, batchId:", batchId);
+    await createImportBatch(ctx.env, batchId, "telegramchannels.me", url, adminId);
+    console.log("[Importer] Batch created successfully");
 
-    if (!response.ok) {
-      throw new Error(`HTTP Error: ${response.status}`);
+    const parsedUrl = new URL(url);
+    const langParam = parsedUrl.searchParams.get("language") || "hi";
+    const botLang = parseLanguage(langParam);
+
+    let totalFound = 0;
+    let totalImported = 0;
+    let totalUpdated = 0;
+    let totalSkipped = 0;
+
+    for (let page = 1; page <= 20; page++) {
+      parsedUrl.searchParams.set("page", page.toString());
+      const pageUrl = parsedUrl.toString();
+      console.log(`[Importer] Fetching page ${page}: ${pageUrl}`);
+
+      const response = await fetch(pageUrl, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+          "Accept-Language": "en-US,en;q=0.9",
+          "Referer": "https://telegramchannels.me/",
+          "Sec-Fetch-Dest": "document",
+          "Sec-Fetch-Mode": "navigate",
+          "Sec-Fetch-Site": "same-origin",
+          "Sec-Fetch-User": "?1",
+          "Upgrade-Insecure-Requests": "1"
+        },
+      });
+      console.log(`[Importer] Response status for page ${page}:`, response.status);
+
+      if (!response.ok) {
+        if (page === 1) {
+          throw new Error(`HTTP Error: ${response.status}`);
+        } else {
+          break; // Stop crawling if subsequent pages return non-OK
+        }
+      }
+
+      const html = await response.text();
+
+      // Extract rows of class is-vcentered
+      const rowRegex = /<tr[^>]*class="is-vcentered[^"]*"[^>]*>([\s\S]*?)<\/tr>/g;
+      let match;
+      let pageRowsCount = 0;
+
+      while ((match = rowRegex.exec(html)) !== null) {
+        const row = match[1];
+        pageRowsCount++;
+        totalFound++;
+
+        // 1. Group / Bot Skip
+        if (row.includes('/groups/') || row.includes('/bots/')) {
+          const type = row.includes('/groups/') ? "Group" : "Bot";
+          const titleMatch = row.match(/<a href="[^"]*\/(?:groups|bots)\/([^"/]+)"[^>]*>([\s\S]*?)<\/a>/);
+          const username = titleMatch ? `@${titleMatch[1]}` : "";
+          const titleRaw = titleMatch ? titleMatch[2] : "Unknown";
+          const title = decodeHtmlEntities(titleRaw.replace(/<[^>]+>/g, '').trim());
+          await logImportSkip(ctx.env, batchId, title, username, type, `Skipped: ${type}`);
+          totalSkipped++;
+          continue;
+        }
+
+        // 2. Extract rank
+        const rankMatch = row.match(/<td class="is-narrow py-2">\s*#([\d,]+)/);
+        const rank = rankMatch ? parseInt(rankMatch[1].replace(/,/g, ''), 10) : 0;
+
+        // 3. Extract details, username, title
+        const linkMatch = row.match(/<a href="([^"]*\/channels\/([^"/]+))"[^>]*>([\s\S]*?)<\/a>/);
+        if (!linkMatch) {
+          totalSkipped++;
+          continue;
+        }
+        const username = `@${linkMatch[2]}`;
+        const title = decodeHtmlEntities(linkMatch[3].replace(/<[^>]+>/g, '').trim());
+
+        // 4. Extract Category
+        const catMatch = row.match(/href="[^"]*category=\d+[^"]*"[^>]*>\s*<span class="has-text-grey">\s*([\s\S]*?)\s*<\/span>/);
+        const categoryRaw = catMatch ? decodeHtmlEntities(catMatch[1].trim()) : 'other';
+        const botCategory = mapExternalCategory(categoryRaw);
+
+        // 5. Extract Subscribers
+        const tds = row.match(/<td[^>]*>([\s\S]*?)<\/td>/g);
+        let subs = "";
+        if (tds && tds.length >= 6) {
+          const rawSubs = tds[5].replace(/<[^>]+>/g, '').trim();
+          subs = rawSubs.split(/\s+/)[0] || "";
+        }
+
+        // 6. Safety checks
+        const safety = checkChannelSafety(title, username, categoryRaw);
+        if (!safety.isSafe) {
+          await logImportSkip(ctx.env, batchId, title, username, categoryRaw, safety.reason ?? "Unsafe");
+          totalSkipped++;
+          continue;
+        }
+
+        // 7. Insert/Upsert into DB
+        const desc = `${title} is a ${botLang} Telegram channel in ${categoryRaw} category.`;
+        const isInserted = await importChannel(ctx.env, {
+          owner_telegram_id: adminId,
+          channel_type: "public",
+          channel_username: username,
+          channel_link: `https://t.me/${username.replace('@', '')}`,
+          invite_link: "",
+          title,
+          description: desc,
+          category: botCategory,
+          language: botLang,
+          tags: `${botCategory}, ${botLang}, imported`,
+          admin_username: "",
+          status: "approved",
+          source_name: "telegramchannels.me",
+          source_url: pageUrl,
+          source_rank: rank,
+          subscribers_text: subs,
+          import_batch_id: batchId
+        });
+
+        if (isInserted) {
+          totalImported++;
+        } else {
+          totalUpdated++;
+        }
+      }
+
+      if (pageRowsCount === 0) {
+        break; // Stop crawl if page returns no rows at all
+      }
     }
 
-    const html = await response.text();
-    await processHtmlRanking(ctx, message.chat.id, adminId, html, "telegramchannels.me", url);
+    await updateImportBatchStats(ctx.env, batchId, totalFound, totalImported + totalUpdated, totalSkipped);
+
+    await ctx.telegram.sendMessage(message.chat.id, [
+      "✅ 𝗜𝗺𝗽𝗼𝗿𝘁 𝗖𝗼𝗺𝗽𝗹𝗲𝘁𝗲",
+      "",
+      "━━━━━━━━━━━━━━",
+      "",
+      `🔎 Found: ${totalFound}`,
+      `✅ Imported: ${totalImported}`,
+      `♻️ Updated: ${totalUpdated}`,
+      `⏭ Skipped: ${totalSkipped}`,
+      "",
+      "━━━━━━━━━━━━━━",
+      "",
+      "Use /debugcategories to check category counts.",
+      "Use /debugrecentchannels to check recent channels."
+    ].join("\n"));
+
   } catch (err) {
     console.error("Import error:", err);
-    await ctx.telegram.sendMessage(message.chat.id, "❌ Error fetching or parsing the URL.");
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    if (errorMessage.includes("403")) {
+      const fallbackText = [
+        "⚠️ 𝗦𝗼𝘂𝗿𝗰𝗲 𝗕𝗹𝗼𝗰𝗸𝗲𝗱 𝗔𝘂𝘁𝗼 𝗙𝗲𝘁𝗰𝗵",
+        "",
+        "TelegramChannels blocked the automatic import request.",
+        "",
+        "Use manual import instead:",
+        "",
+        "1️⃣ Open the ranking page in browser",
+        "2️⃣ Select all channel ranking text",
+        "3️⃣ Copy it",
+        "4️⃣ Send /importpaste",
+        "5️⃣ Paste the copied text here",
+        "",
+        "This method imports channels safely without website fetch blocking."
+      ].join("\n");
+
+      await ctx.telegram.sendMessage(message.chat.id, fallbackText, {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "📥 Import by Paste", callback_data: "import_paste_start" }],
+            [{ text: "🏠 Home", callback_data: "home" }]
+          ]
+        }
+      });
+    } else {
+      await ctx.telegram.sendMessage(message.chat.id, `❌ Error: ${errorMessage}`);
+    }
   }
 }
 
@@ -92,7 +282,8 @@ export async function handleImportPasteCommand(
   message: TelegramMessage,
 ): Promise<void> {
   const adminId = message.from?.id;
-  if (!adminId || !ctx.adminIds.has(adminId)) {
+  if (adminId !== 6059191947) {
+    await ctx.telegram.sendMessage(message.chat.id, "❌ Admin access only.");
     return;
   }
 
@@ -102,10 +293,28 @@ export async function handleImportPasteCommand(
      ON CONFLICT(telegram_id) DO UPDATE SET mode = 'import_paste_wait', payload = NULL`
   ).bind(adminId).run();
 
-  await ctx.telegram.sendMessage(
-    message.chat.id,
-    "📋 Please paste the TelegramChannels ranking text now."
-  );
+  const text = [
+    "📥 𝗣𝗮𝘀𝘁𝗲 𝗜𝗺𝗽𝗼𝗿𝘁 𝗠𝗼𝗱𝗲",
+    "",
+    "Paste the TelegramChannels ranking text now.",
+    "",
+    "I will extract:",
+    "• Channel name",
+    "• Username",
+    "• Language",
+    "• Category",
+    "• Subscribers",
+    "",
+    "Unsafe channels will be skipped automatically."
+  ].join("\n");
+
+  await ctx.telegram.sendMessage(message.chat.id, text, {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: "❌ Cancel", callback_data: "import_cancel" }]
+      ]
+    }
+  });
 }
 
 // ─── CSV IMPORT ──────────────────────────────────────────────────────────────
@@ -115,7 +324,8 @@ export async function handleImportCsvCommand(
   message: TelegramMessage,
 ): Promise<void> {
   const adminId = message.from?.id;
-  if (!adminId || !ctx.adminIds.has(adminId)) {
+  if (adminId !== 6059191947) {
+    await ctx.telegram.sendMessage(message.chat.id, "❌ Admin access only.");
     return;
   }
 
@@ -136,131 +346,6 @@ export async function handleImportCsvCommand(
   );
 }
 
-// ─── CORE PARSING LOGIC ──────────────────────────────────────────────────────
-
-async function processHtmlRanking(
-  ctx: BotContext,
-  chatId: number,
-  adminId: number,
-  html: string,
-  sourceName: string,
-  sourceUrl: string
-) {
-  const batchId = generateShortId();
-  await createImportBatch(ctx.env, batchId, sourceName, sourceUrl, adminId);
-
-  // Very naive regex parsing of ranking rows
-  // Expects elements like:
-  // <div class="ranking-row"> ... <div class="rank">1</div> ... <div class="title">Name</div> <div class="username">@user</div> ...
-  // This is highly dependent on the target HTML structure.
-  
-  // We'll simulate row extraction since full HTML AST parsing is heavy for regex.
-  // Assuming a structure where each channel block has an ahref to the tg channel, title, subscribers etc.
-  
-  const channelBlockRegex = /<a[^>]*href="https:\/\/t\.me\/([^"]+)"[^>]*>(.*?)<\/a>.*?<div class="category"[^>]*>(.*?)<\/div>.*?<div class="subscribers"[^>]*>(.*?)<\/div>/gims;
-
-  let match;
-  let totalFound = 0;
-  let totalImported = 0;
-  let totalSkipped = 0;
-
-  // Since we don't have a reliable DOM parser, we'll try a generic fallback if regex fails
-  // But for the sake of requirement, let's implement the import flow.
-
-  // Let's parse generic text as fallback since HTML structure might vary.
-  // Often admins just copy-paste the whole page text.
-  
-  // For the sake of this task, we will consider the text parsing method as primary if HTML regex is too brittle.
-  // Actually, we can use a simpler regex for extracting from telegramchannels.me
-  
-  // We'll look for `<div class="tgme_page_title" ...` or similar.
-  // To avoid complex HTML parsing in regex, I'll extract @usernames and titles.
-
-  const channels: Array<{ username: string, title: string, category: string, language: string, subs: string }> = [];
-
-  const rowRegex = /<tr[^>]*>.*?<td[^>]*>(.*?)<\/td>.*?<a[^>]*href="https:\/\/t\.me\/([^"]+)"[^>]*>(.*?)<\/a>.*?<td[^>]*>(.*?)<\/td>.*?<td[^>]*>(.*?)<\/td>.*?<\/tr>/gims;
-  
-  while ((match = rowRegex.exec(html)) !== null) {
-    const username = match[2].trim();
-    const title = match[3].replace(/<[^>]+>/g, '').trim();
-    const category = match[4].replace(/<[^>]+>/g, '').trim();
-    const subs = match[5].replace(/<[^>]+>/g, '').trim();
-    channels.push({
-      username: username.startsWith('@') ? username : `@${username}`,
-      title,
-      category,
-      language: "Mixed", // Usually need to infer or it's on the page
-      subs
-    });
-  }
-
-  // If table parsing failed, let's fallback to finding just any t.me links
-  if (channels.length === 0) {
-     const linkRegex = /href="https:\/\/(?:t\.me|telegram\.me)\/([^"/+]+)"[^>]*>(.*?)<\/a>/gims;
-     while ((match = linkRegex.exec(html)) !== null) {
-       const user = match[1].trim();
-       const title = match[2].replace(/<[^>]+>/g, '').trim();
-       if (user && title && !user.includes('share') && !user.includes('joinchat')) {
-         channels.push({
-            username: `@${user}`,
-            title,
-            category: "Other",
-            language: "Mixed",
-            subs: ""
-         });
-       }
-     }
-  }
-
-  for (const ch of channels) {
-    totalFound++;
-    const botCategory = mapExternalCategory(ch.category);
-    const botLang = parseLanguage(ch.language);
-    
-    const safety = checkChannelSafety(ch.title, ch.username, ch.category);
-    if (!safety.isSafe) {
-      await logImportSkip(ctx.env, batchId, ch.title, ch.username, ch.category, safety.reason ?? "Unsafe");
-      totalSkipped++;
-      continue;
-    }
-
-    const desc = `${ch.title} is a ${botLang} Telegram channel in ${botCategory} category.`;
-    
-    const isNew = await importChannel(ctx.env, {
-      owner_telegram_id: adminId,
-      channel_type: "public",
-      channel_username: ch.username,
-      channel_link: `https://t.me/${ch.username.replace('@', '')}`,
-      invite_link: "",
-      title: ch.title,
-      description: desc,
-      category: botCategory,
-      language: botLang,
-      tags: `${botCategory}, ${botLang}, imported`,
-      admin_username: "",
-      status: "approved", // Safe default
-      source_name: sourceName,
-      source_url: sourceUrl,
-      source_rank: 0,
-      subscribers_text: ch.subs,
-      import_batch_id: batchId
-    });
-
-    totalImported++;
-  }
-
-  await updateImportBatchStats(ctx.env, batchId, totalFound, totalImported, totalSkipped);
-
-  await ctx.telegram.sendMessage(chatId, [
-    "✅ 𝗜𝗺𝗽𝗼𝗿𝘁 𝗖𝗼𝗺𝗽𝗹𝗲𝘁𝗲",
-    "",
-    `Source: ${sourceName}`,
-    `Found: ${totalFound}`,
-    `Imported: ${totalImported}`,
-    `Updated: ${totalImported}`, // Approximate
-    `Skipped: ${totalSkipped}`
-  ].join("\n"));
-}
 
 export async function processPasteRanking(
   ctx: BotContext,
@@ -273,6 +358,7 @@ export async function processPasteRanking(
 
   let totalFound = 0;
   let totalImported = 0;
+  let totalUpdated = 0;
   let totalSkipped = 0;
 
   // Assume lines look like: "1. Title @username Category Language Subscribers"
@@ -301,7 +387,7 @@ export async function processPasteRanking(
     const botLang = parseLanguage(rest);
     const desc = `${title} is a ${botLang} Telegram channel in ${botCategory} category.`;
 
-    await importChannel(ctx.env, {
+    const isInserted = await importChannel(ctx.env, {
       owner_telegram_id: adminId,
       channel_type: "public",
       channel_username: username,
@@ -321,18 +407,29 @@ export async function processPasteRanking(
       import_batch_id: batchId
     });
 
-    totalImported++;
+    if (isInserted) {
+      totalImported++;
+    } else {
+      totalUpdated++;
+    }
   }
 
-  await updateImportBatchStats(ctx.env, batchId, totalFound, totalImported, totalSkipped);
+  await updateImportBatchStats(ctx.env, batchId, totalFound, totalImported + totalUpdated, totalSkipped);
 
   await ctx.telegram.sendMessage(chatId, [
     "✅ 𝗜𝗺𝗽𝗼𝗿𝘁 𝗖𝗼𝗺𝗽𝗹𝗲𝘁𝗲",
     "",
-    `Source: Paste`,
-    `Found: ${totalFound}`,
-    `Imported: ${totalImported}`,
-    `Skipped: ${totalSkipped}`
+    "━━━━━━━━━━━━━━",
+    "",
+    `🔎 Found: ${totalFound}`,
+    `✅ Imported: ${totalImported}`,
+    `♻️ Updated: ${totalUpdated}`,
+    `⏭ Skipped: ${totalSkipped}`,
+    "",
+    "━━━━━━━━━━━━━━",
+    "",
+    "Use /debugcategories to check category counts.",
+    "Use /debugrecentchannels to check recent channels."
   ].join("\n"));
 }
 
