@@ -253,8 +253,26 @@ export function categoriesKeyboard(
     })),
   );
 
+  rows.push([{ text: "🌍 Languages", callback_data: "languages_page" }]);
   rows.push(backHomeRow(backCallback));
 
+  return { inline_keyboard: rows };
+}
+
+export function languagesText(): string {
+  return ["🌍 Browse by Language", "", "Choose a language below."].join("\n");
+}
+
+export function languagesKeyboard(backCallback = "categories"): TelegramInlineKeyboardMarkup {
+  const rows = buttonRows(
+    LANGUAGES.map((language) => ({
+      text: language,
+      callback_data: `language:${language}`,
+    })),
+  );
+  
+  rows.push(backHomeRow(backCallback));
+  
   return { inline_keyboard: rows };
 }
 
