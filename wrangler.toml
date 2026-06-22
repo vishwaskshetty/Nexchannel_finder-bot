@@ -1,0 +1,36 @@
+name = "nexchannel-finder-bot"
+main = "src/index.ts"
+compatibility_date = "2026-06-18"
+compatibility_flags = ["nodejs_compat"]
+
+[observability]
+enabled = true
+head_sampling_rate = 1
+
+# Cloudflare D1 binding used by src/db.ts
+
+[[d1_databases]]
+binding = "DB"
+database_name = "nexchannel_finder_db"
+database_id = "0a870d6f-25b5-41f1-8cec-191a720c0a5e"
+migrations_dir = "migrations"
+
+# Non-secret settings
+
+# Keep BOT_TOKEN and WEBHOOK_SECRET as Cloudflare secrets
+
+[vars]
+ADMIN_IDS = "6059191947"
+ADMIN_REVIEW_CHANNEL_ID = "-1004352856502"
+FORCE_SUB_CHANNEL = "@Nex_bots"
+FORCE_SUB_LINK = "https://t.me/Nex_bots"
+PUBLIC_POST_CHANNEL = "-1004322240719"
+BOT_USERNAME = "NexChannelFinderBot"
+YOUTUBE_CHANNEL_LINK = "https://www.youtube.com/channel/UCjq-Zx6uTK1h8skXd8MoOHg?sub_confirmation=1"
+
+# Auto weekly leaderboard post
+
+# Runs Sunday 7:00 PM IST
+
+[triggers]
+crons = ["30 13 * * 0"]

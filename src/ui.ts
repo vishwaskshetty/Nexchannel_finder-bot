@@ -1,0 +1,1846 @@
+import type {
+  AdminStats,
+  Category,
+  Channel,
+  Report,
+  SearchSort,
+  Submission,
+  TelegramInlineKeyboardButton,
+  TelegramInlineKeyboardMarkup,
+} from "./types";
+import { categoryKeyFromSlug, CATEGORIES } from "./config/categories";
+import { LANGUAGES } from "./config/languages";
+
+type KeyboardRows = TelegramInlineKeyboardMarkup["inline_keyboard"];
+
+interface PaginationOptions {
+  previousCallback?: string;
+  nextCallback?: string;
+  backCallback?: string;
+  homeCallback?: string;
+}
+
+type ChannelCardInput = Channel & {
+  channel_username?: string | null;
+  category?: string | null;
+  language?: string | null;
+  join_clicks?: number | null;
+  trending_score?: number | null;
+  rating_average?: number | null;
+  rating_count?: number | null;
+};
+
+interface SearchViewState {
+  query: string;
+  sort: SearchSort;
+  language?: string | null;
+  verifiedOnly?: boolean;
+}
+
+interface ChannelActionKeyboardOptions {
+  backCallback?: string;
+  homeCallback?: string;
+  isSaved?: boolean;
+}
+
+export interface LeaderboardSections {
+  top: Channel[];
+  rated: Channel[];
+  clicked: Channel[];
+  newChannels: Channel[];
+  fallback: boolean;
+}
+
+export const PAGE_SIZE = 5;
+export const MY_CHANNELS_PAGE_SIZE = 3;
+export const ADMIN_PAGE_SIZE = 5;
+
+const SECTION_DIVIDER = "━━━━━━━━━━━━━━";
+const KEYCAP_NUMBERS = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"];
+
+export const HOME_TEXT = [
+  "👋 𝗪𝗲𝗹𝗰𝗼𝗺𝗲 𝘁𝗼 𝗡𝗲𝘅𝗖𝗵𝗮𝗻𝗻𝗲𝗹 𝗙𝗶𝗻𝗱𝗲𝗿",
+  "",
+  "Discover trusted Telegram channels, rate your favorites, and grow your own community.",
+  "",
+  "━━━━━━━━━━━━━━",
+  "",
+  "Choose an option below.",
+].join("\n");
+
+export const HELP_TEXT = [
+  "ℹ️ 𝗛𝗲𝗹𝗽 𝗖𝗲𝗻𝘁𝗲𝗿",
+  "",
+  "Browse, search, save, rate, or report channels from the menu.",
+  "",
+  "━━━━━━━━━━━━━━",
+  "",
+  "⌨️ 𝗖𝗼𝗺𝗺𝗮𝗻𝗱𝘀",
+  "/start",
+  "/categories",
+  "/search keyword",
+  "/submit",
+  "/report channel_id reason",
+].join("\n");
+
+export const FORCE_SUB_TEXT = [
+  "🔒 Join Required",
+  "",
+  "Join our official channel to use NexChannel Finder.",
+  "",
+  "After joining, tap ✅ I Joined.",
+].join("\n");
+
+export const EMPTY_STATE_TEXT = [
+  "📭 Nothing to show yet.",
+  "Try another section or submit a useful channel.",
+].join("\n");
+
+export const LOADING_TEXT = "⏳ Checking, please wait...";
+export const SUCCESS_TEXT = "✅ Done successfully!";
+export const ERROR_TEXT = "❌ Something went wrong. Please try again.";
+
+export const SUBMIT_INTRO_TEXT = [
+  "📢 Submit Your Channel",
+  "",
+  "Send your channel username or link.",
+  "",
+  "Examples:",
+  "@examplechannel",
+  "https://t.me/examplechannel",
+  "https://t.me/+privateInviteCode",
+  "",
+  "Rules:",
+  "✅ Public channels allowed",
+  "✅ Private channels allowed",
+  "✅ Useful content only",
+  "✅ Admin approval required",
+  "✅ Private links must be auto-join / auto-approve",
+  "",
+  "Not allowed:",
+  "🚫 Adult content",
+  "🚫 Scam earning",
+  "🚫 Exam leaks",
+  "🚫 Copyrighted PDFs",
+  "🚫 Hate or illegal content",
+  "🚫 Broken links",
+  "🚫 Private request-to-join links",
+  "",
+  "Choose the channel type below.",
+].join("\n");
+
+export const PRIVATE_CHANNEL_RULE_TEXT = [
+  "🔐 Private Channel",
+  "",
+  "Send a working auto-join / auto-approve invite link.",
+  "",
+  "Request-to-join private links are not allowed.",
+].join("\n");
+
+export function mainMenuKeyboard(isAdmin = false): TelegramInlineKeyboardMarkup {
+  const rows: KeyboardRows = [
+    [
+      { text: "🔥 Top Channels", callback_data: "top" },
+      { text: "⭐ Featured", callback_data: "featured" },
+    ],
+    [
+      { text: "📂 Categories", callback_data: "categories" },
+      { text: "🆕 New", callback_data: "new" },
+    ],
+    [
+      { text: "🔎 Search", callback_data: "search" },
+      { text: "📢 Submit", callback_data: "submit" },
+    ],
+    [
+      { text: "💾 Saved", callback_data: "saved" },
+      { text: "🏆 Leaderboard", callback_data: "leaderboard" },
+    ],
+    [
+      { text: "📊 My Channels", callback_data: "my_channels" },
+      { text: "ℹ️ Help", callback_data: "help" },
+    ],
+  ];
+
+  if (isAdmin) {
+    rows.push([{ text: "🛠 Admin Panel", callback_data: "admin" }]);
+  }
+
+  return { inline_keyboard: rows };
+}
+
+export function backHomeKeyboard(backCallback = "home", homeCallback = "home"): TelegramInlineKeyboardMarkup {
+  return {
+    inline_keyboard: [backHomeRow(backCallback, homeCallback)],
+  };
+}
+
+export function forceSubKeyboard(link?: string): TelegramInlineKeyboardMarkup {
+  const rows: KeyboardRows = [];
+
+  if (link) {
+    rows.push([{ text: "📢 Join Channel", url: link }]);
+  }
+
+  rows.push([{ text: "✅ I Joined", callback_data: "check_force_sub" }]);
+
+  return { inline_keyboard: rows };
+}
+
+export function submitStartKeyboard(): TelegramInlineKeyboardMarkup {
+  return submitTypeKeyboard();
+}
+
+export function submitTypeKeyboard(): TelegramInlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [
+        { text: "🌍 Public", callback_data: "submit_type:public" },
+        { text: "🔐 Private", callback_data: "submit_type:private" },
+      ],
+      ...submitNavKeyboard("home").inline_keyboard,
+    ],
+  };
+}
+
+export function submitCategoriesKeyboard(categories?: Category[]): TelegramInlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      ...buttonRows(
+        CATEGORIES.map((category) => ({
+          text: `${category.emoji} ${category.label}`,
+          callback_data: `submit_category:${category.key}`,
+        })),
+      ),
+      ...submitNavKeyboard("s:b").inline_keyboard,
+    ],
+  };
+}
+
+export function submitLanguageKeyboard(): TelegramInlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      ...buttonRows(LANGUAGES.map((language) => ({ text: language, callback_data: `submit_language:${language}` }))),
+      ...submitNavKeyboard("s:b").inline_keyboard,
+    ],
+  };
+}
+
+export function submitNavKeyboard(backCallback = "s:b"): TelegramInlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [{ text: "❌ Cancel", callback_data: "submit_cancel" }],
+      backHomeRow(backCallback),
+    ],
+  };
+}
+
+export function categoriesText(categories: Category[]): string {
+  if (categories.length === 0) {
+    return ["📂 Categories", "", EMPTY_STATE_TEXT].join("\n");
+  }
+
+  return ["📂 Categories", "", "Choose a category below."].join("\n");
+}
+
+export function categoriesKeyboard(
+  categories?: Category[],
+  backCallback = "home",
+): TelegramInlineKeyboardMarkup {
+  const rows = buttonRows(
+    CATEGORIES.map((category) => ({
+      text: `${category.emoji} ${category.label}`,
+      callback_data: `category:${category.key}`,
+    })),
+  );
+
+  rows.push(backHomeRow(backCallback));
+
+  return { inline_keyboard: rows };
+}
+
+export function channelListText(
+  category: Category,
+  channels: Channel[],
+  page: number,
+  hasNext: boolean,
+): string {
+  if (channels.length === 0) {
+    return [`📂 ${category.name}`, "", EMPTY_STATE_TEXT].join("\n");
+  }
+
+  return formatChannelList(
+    channels,
+    `📂 ${category.name} • Page ${page + 1}${hasNext ? "" : " • Last page"}`,
+  );
+}
+
+export function formatChannelList(channels: Channel[], title: string): string {
+  if (channels.length === 0) {
+    return [unicodeBold(title), "", EMPTY_STATE_TEXT].join("\n");
+  }
+
+  return [
+    unicodeBold(title),
+    "",
+    SECTION_DIVIDER,
+    "",
+    ...channels.flatMap((channel, index) => [channelListLine(channel, index + 1), ""]),
+    SECTION_DIVIDER,
+    "",
+    "Choose a channel below.",
+  ].join("\n");
+}
+
+export function channelListKeyboard(
+  slug: string,
+  channels: Channel[],
+  page: number,
+  hasNext: boolean,
+): TelegramInlineKeyboardMarkup {
+  const categoryKey = categoryKeyFromSlug(slug) ?? "tech";
+  const rows: KeyboardRows = buttonRows(
+    channels.map((channel, index) => ({
+      text: channelButtonText(channel, index),
+      callback_data: `channel:${channel.id}`,
+    })),
+  );
+
+  rows.push(
+    ...paginationKeyboard({
+      previousCallback: page > 0 ? `page:category:${categoryKey}:${page - 1}` : undefined,
+      nextCallback: hasNext ? `page:category:${categoryKey}:${page + 1}` : undefined,
+      backCallback: "categories",
+    }).inline_keyboard,
+  );
+
+  return { inline_keyboard: rows };
+}
+
+export function formatChannelDetails(channel: ChannelCardInput): string {
+  const category = categoryLabel(channel);
+  const language = channel.language ?? "Mixed";
+  const rating = formatRating(channel.rating_average ?? 0);
+  const ratingCount = channel.rating_count ?? 0;
+  const clicks = channel.join_clicks ?? channel.clicks ?? 0;
+  const description = channel.description?.trim() || "No description added yet.";
+  const channelType = channel.channel_type === "private" ? "Private" : "Public";
+
+  const lines: Array<string | null> = [
+    "📢 𝗖𝗵𝗮𝗻𝗻𝗲𝗹 𝗗𝗲𝘁𝗮𝗶𝗹𝘀",
+    "",
+    SECTION_DIVIDER,
+    "",
+    `📌 𝗡𝗮𝗺𝗲: ${channel.title}${verifiedBadge(channel)}`,
+    `🆔 𝗜𝗗: ${channel.id}`,
+    `🔐 𝗧𝘆𝗽𝗲: ${channelType}`,
+    `📂 𝗖𝗮𝘁𝗲𝗴𝗼𝗿𝘆: ${category}`,
+    `🌍 𝗟𝗮𝗻𝗴𝘂𝗮𝗴𝗲: ${language}`,
+    channel.subscribers_text ? `👥 𝗦𝘂𝗯𝘀𝗰𝗿𝗶𝗯𝗲𝗿𝘀: ${channel.subscribers_text}` : null,
+    channel.owner_verified ? "🔐 𝗢𝘄𝗻𝗲𝗿: Verified" : null,
+    "",
+    `⭐ 𝗥𝗮𝘁𝗶𝗻𝗴: ${rating} / 5`,
+    `👥 𝗥𝗮𝘁𝗶𝗻𝗴𝘀: ${formatNumber(ratingCount)}`,
+    `👀 𝗖𝗹𝗶𝗰𝗸𝘀: ${formatNumber(clicks)}`,
+    "",
+    SECTION_DIVIDER,
+    "",
+    `📝 𝗔𝗯𝗼𝘂𝘁: ${description}`,
+    "",
+    SECTION_DIVIDER,
+    "",
+    "🔎 Powered by NexChannel Finder",
+  ];
+
+  return lines.filter((line): line is string => line !== null).join("\n");
+}
+
+export function channelCard(channel: ChannelCardInput): string {
+  return formatChannelDetails(channel);
+}
+
+export function channelDetailsText(channel: Channel): string {
+  return formatChannelDetails(channel);
+}
+
+export function channelActionKeyboard(
+  channel: Channel,
+  options: ChannelActionKeyboardOptions = {},
+): TelegramInlineKeyboardMarkup {
+  const rows: KeyboardRows = [];
+  const joinLink = channelJoinLink(channel);
+  const backCallback = options.backCallback ?? "home";
+  const homeCallback = options.homeCallback ?? "home";
+
+  // Join button: uses channel_link for public, invite_link for private
+  if (joinLink) {
+    rows.push([{ text: "📥 Join Channel", url: joinLink }]);
+  }
+
+  rows.push(
+    [
+      { text: "⭐ Rate", callback_data: `rate:${channel.id}` },
+      {
+        text: options.isSaved ? "✅ Saved" : "💾 Save",
+        callback_data: options.isSaved ? `unsave:${channel.id}` : `save:${channel.id}`,
+      },
+    ],
+    [{ text: "🚨 Report", callback_data: `report:${channel.id}` }],
+    backHomeRow(backCallback, homeCallback),
+  );
+
+  return { inline_keyboard: rows };
+}
+
+export function channelDetailsKeyboard(
+  channel: Channel,
+  backCallback = "categories",
+  isSaved = false,
+): TelegramInlineKeyboardMarkup {
+  return channelActionKeyboard(channel, { backCallback, isSaved });
+}
+
+export function publicPostKeyboard(
+  channel: Channel,
+  botUsername?: string,
+): TelegramInlineKeyboardMarkup | undefined {
+  const rows: KeyboardRows = [];
+  const joinLink = channelJoinLink(channel);
+  const botLink = botUrl(botUsername);
+
+  if (joinLink) {
+    rows.push([{ text: "📥 Join Channel", url: joinLink }]);
+  }
+  if (botLink) {
+    rows.push([{ text: "🤖 Open Bot", url: botLink }]);
+  }
+
+  return rows.length > 0 ? { inline_keyboard: rows } : undefined;
+}
+
+export function formatApprovedChannelPost(channel: ChannelCardInput): string {
+  const rating = channel.rating_average && channel.rating_average > 0
+    ? formatRating(channel.rating_average)
+    : "New";
+  const description = channel.description?.trim() || "No description added yet.";
+
+  return [
+    "✅ 𝗡𝗲𝘄 𝗖𝗵𝗮𝗻𝗻𝗲𝗹 𝗔𝗽𝗽𝗿𝗼𝘃𝗲𝗱",
+    "",
+    SECTION_DIVIDER,
+    "",
+    `📢 𝗖𝗵𝗮𝗻𝗻𝗲𝗹: ${channel.title}${verifiedBadge(channel)}`,
+    `🆔 𝗜𝗗: ${channel.id}`,
+    `📂 𝗖𝗮𝘁𝗲𝗴𝗼𝗿𝘆: ${categoryLabel(channel)}`,
+    `🌍 𝗟𝗮𝗻𝗴𝘂𝗮𝗴𝗲: ${channel.language ?? "Mixed"}`,
+    "",
+    `⭐ 𝗥𝗮𝘁𝗶𝗻𝗴: ${rating}${rating === "New" ? "" : " / 5"}`,
+    `👀 𝗖𝗹𝗶𝗰𝗸𝘀: ${formatNumber(channel.join_clicks ?? channel.clicks ?? 0)}`,
+    "",
+    SECTION_DIVIDER,
+    "",
+    "📝 𝗗𝗲𝘀𝗰𝗿𝗶𝗽𝘁𝗶𝗼𝗻:",
+    description,
+    "",
+    SECTION_DIVIDER,
+    "",
+    "📌 Discover more useful Telegram channels with NexChannel Finder.",
+  ].join("\n");
+}
+
+export function ratingText(channel: Channel): string {
+  return [
+    `⭐ Rate Channel #${channel.id}`,
+    "",
+    `📢 ${channel.title}${verifiedBadge(channel)}`,
+    `Current: ${formatRating(channel.rating_average ?? 0)} / 5 from ${formatNumber(channel.rating_count ?? 0)} ratings`,
+    "",
+    "Choose your rating.",
+  ].join("\n");
+}
+
+export function ratingKeyboard(channelId: number): TelegramInlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [
+        { text: "⭐ 1", callback_data: `rating:${channelId}:1` },
+        { text: "⭐⭐ 2", callback_data: `rating:${channelId}:2` },
+      ],
+      [
+        { text: "⭐⭐⭐ 3", callback_data: `rating:${channelId}:3` },
+        { text: "⭐⭐⭐⭐ 4", callback_data: `rating:${channelId}:4` },
+      ],
+      [{ text: "⭐⭐⭐⭐⭐ 5", callback_data: `rating:${channelId}:5` }],
+      backHomeRow(`channel:${channelId}`, "home"),
+    ],
+  };
+}
+
+export function searchHelpText(): string {
+  return ["🔎 Search Channels", "", "Send a keyword, category, language, or channel username."].join("\n");
+}
+
+export function searchPromptKeyboard(): TelegramInlineKeyboardMarkup {
+  return {
+    inline_keyboard: [...searchFilterRows(), backHomeRow("home", "home")],
+  };
+}
+
+export function searchResultsText(
+  state: SearchViewState,
+  channels: Channel[],
+  page: number,
+  hasNext: boolean,
+): string {
+  if (channels.length === 0) {
+    return ["📭 No channels found.", "", "Try another keyword or browse categories."].join("\n");
+  }
+
+  const queryLabel = state.query.trim() || "All approved channels";
+  const filters = searchFilterSummary(state);
+
+  return formatChannelList(
+    channels,
+    [
+      "🔎 Search Channels",
+      `🔍 Query: ${queryLabel}`,
+      `⚙️ Filter: ${filters}`,
+      `📄 Page ${page + 1}${hasNext ? "" : " • Last page"}`,
+    ].join("\n"),
+  );
+}
+
+export function searchResultsKeyboard(
+  channels: Channel[],
+  page: number,
+  hasNext: boolean,
+): TelegramInlineKeyboardMarkup {
+  const rows: KeyboardRows = buttonRows(
+    channels.map((channel, index) => ({
+      text: channelButtonText(channel, index),
+      callback_data: `channel:${channel.id}`,
+    })),
+  );
+
+  const pager = [];
+  if (page > 0) {
+    pager.push({ text: "⬅️ Previous", callback_data: `sr:p:${page - 1}` });
+  }
+
+  if (hasNext) {
+    pager.push({ text: "Next ➡️", callback_data: `sr:p:${page + 1}` });
+  }
+
+  if (pager.length > 0) {
+    rows.push(pager);
+  }
+
+  rows.push(...searchFilterRows());
+  rows.push(backHomeRow("search", "home"));
+
+  return { inline_keyboard: rows };
+}
+
+export function searchLanguageKeyboard(): TelegramInlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      ...buttonRows(LANGUAGES.map(lang => ({ text: lang, callback_data: `sr:lg:${lang.substring(0, 2).toLowerCase()}` }))),
+      backHomeRow("sr:p:0", "home"),
+    ],
+  };
+}
+
+export function searchLanguageText(): string {
+  return ["🌍 Language", "", "Choose a language filter."].join("\n");
+}
+
+export function channelResultsText(title: string, channels: Channel[]): string {
+  if (channels.length === 0) {
+    return [title, "", EMPTY_STATE_TEXT].join("\n");
+  }
+
+  return formatChannelList(channels, title);
+}
+
+export function channelResultsKeyboard(
+  channels: Channel[],
+  backCallback = "home",
+  section?: "top" | "featured" | "new",
+  page = 0,
+  hasNext = false,
+): TelegramInlineKeyboardMarkup {
+  const rows = buttonRows(
+    channels.map((channel, index) => ({
+      text: channelButtonText(channel, index),
+      callback_data: `channel:${channel.id}`,
+    })),
+  );
+  if (section) {
+    const pager: TelegramInlineKeyboardButton[] = [];
+    if (page > 0) {
+      pager.push({ text: "⬅️ Previous", callback_data: `page:${section}:${page - 1}` });
+    }
+    if (hasNext) {
+      pager.push({ text: "Next ➡️", callback_data: `page:${section}:${page + 1}` });
+    }
+    if (pager.length > 0) {
+      rows.push(pager);
+    }
+  }
+  rows.push(backHomeRow(backCallback));
+  return { inline_keyboard: rows };
+}
+
+export function savedChannelsText(channels: Channel[], page: number, hasNext: boolean): string {
+  if (channels.length === 0) {
+    return [
+      "💾 Saved Channels",
+      "",
+      "📭 No saved channels yet.",
+      "",
+      "Explore channels and tap 💾 Save Channel to keep them here.",
+    ].join("\n");
+  }
+
+  return [
+    "💾 Saved Channels",
+    "",
+    "Here are your saved channels.",
+    `Page ${page + 1}${hasNext ? "" : " • Last page"}`,
+    "",
+    ...channels.map(savedChannelLine),
+  ].join("\n\n");
+}
+
+export function savedChannelsKeyboard(
+  channels: Channel[],
+  page: number,
+  hasNext: boolean,
+): TelegramInlineKeyboardMarkup {
+  const rows: KeyboardRows = [];
+
+  for (const channel of channels) {
+    rows.push([
+      { text: `🔎 ${truncateButtonText(channel.title)}`, callback_data: `channel:${channel.id}` },
+      { text: "❌ Remove", callback_data: `unsave:${channel.id}` },
+    ]);
+  }
+
+  const pager = [];
+  if (page > 0) {
+    pager.push({ text: "⬅️ Previous", callback_data: `saved_page:${page - 1}` });
+  }
+
+  if (hasNext) {
+    pager.push({ text: "Next ➡️", callback_data: `saved_page:${page + 1}` });
+  }
+
+  if (pager.length > 0) {
+    rows.push(pager);
+  }
+
+  rows.push(backHomeRow("home", "home"));
+  return { inline_keyboard: rows };
+}
+
+export function leaderboardText(sections: LeaderboardSections): string {
+  const hasChannels = [
+    ...sections.top,
+    ...sections.rated,
+    ...sections.clicked,
+    ...sections.newChannels,
+  ].length > 0;
+
+  if (!hasChannels) {
+    return ["🏆 Weekly Leaderboard", "", "No approved channels are ready for the leaderboard yet."].join("\n");
+  }
+
+  const fallbackNote = sections.fallback
+    ? ["No weekly movement yet, so showing top approved channels.", ""]
+    : [];
+
+  return [
+    "🏆 𝗪𝗲𝗲𝗸𝗹𝘆 𝗟𝗲𝗮𝗱𝗲𝗿𝗯𝗼𝗮𝗿𝗱",
+    "",
+    "The most active and trusted channels this week.",
+    "",
+    SECTION_DIVIDER,
+    "",
+    ...fallbackNote,
+    ...leaderboardSectionLines("🔥 Top This Week", sections.top),
+    ...leaderboardSectionLines("⭐ Highest Rated", sections.rated),
+    ...leaderboardSectionLines("👀 Most Clicked", sections.clicked),
+    ...leaderboardSectionLines("🆕 Best New Channels", sections.newChannels),
+    "Choose a channel below.",
+  ].join("\n");
+}
+
+export function leaderboardKeyboard(channels: Channel[]): TelegramInlineKeyboardMarkup {
+  const uniqueChannels = uniqueById(channels).slice(0, 6);
+  const rows: KeyboardRows = uniqueChannels.map((channel, index) => [
+    { text: channelButtonText(channel, index), callback_data: `channel:${channel.id}` },
+  ]);
+
+  rows.push(backHomeRow("home", "home"));
+  return { inline_keyboard: rows };
+}
+
+export function weeklyLeaderboardPostText(channels: Channel[]): string {
+  return formatWeeklyLeaderboard(channels);
+}
+
+export function formatWeeklyLeaderboard(channels: Channel[]): string {
+  const approvedChannels = channels.filter((channel) => channel.status === "approved").slice(0, 3);
+
+  return [
+    "🏆 𝗡𝗲𝘅𝗖𝗵𝗮𝗻𝗻𝗲𝗹 𝗪𝗲𝗲𝗸𝗹𝘆 𝗟𝗲𝗮𝗱𝗲𝗿𝗯𝗼𝗮𝗿𝗱",
+    "",
+    "Discover the most active and trusted Telegram channels this week.",
+    "",
+    SECTION_DIVIDER,
+    "",
+    ...approvedChannels.flatMap((channel, index) => [
+      weeklyPostChannelBlock(channel, index + 1),
+      "",
+      SECTION_DIVIDER,
+      "",
+    ]),
+    "",
+    "🔎 Find more useful channels with NexChannel Finder.",
+    "📢 Submit your channel and grow your audience.",
+  ].join("\n");
+}
+
+export function weeklyLeaderboardPostKeyboard(botUsername?: string): TelegramInlineKeyboardMarkup | undefined {
+  const openBotUrl = botUrl(botUsername);
+  if (!openBotUrl) {
+    return undefined;
+  }
+
+  return {
+    inline_keyboard: [
+      [{ text: "🤖 Open Bot", url: openBotUrl }],
+      [{ text: "📢 Submit Channel", url: `${openBotUrl}?start=submit` }],
+    ],
+  };
+}
+
+export function ownershipVerificationText(data: {
+  channelId: number;
+  verificationCode: string;
+  channelType: "public" | "private";
+}): string {
+  const privateNote =
+    data.channelType === "private"
+      ? ["", "Private channels need bot-admin access for automatic verification or manual admin review."]
+      : [];
+
+  return [
+    "🔐 Channel Ownership Verification",
+    "",
+    "To prove this channel belongs to you, complete one verification step.",
+    "",
+    "Your verification code:",
+    data.verificationCode,
+    "",
+    "Choose one method:",
+    "1. Add this bot as admin in your channel temporarily.",
+    "2. Post the verification code in your channel.",
+    "3. Send proof to admin for manual review.",
+    ...privateNote,
+  ].join("\n");
+}
+
+export function ownershipVerificationKeyboard(channelId: number): TelegramInlineKeyboardMarkup {
+  void channelId;
+  return {
+    inline_keyboard: [
+      [{ text: "✅ I Added Bot as Admin", callback_data: "verify_added_bot" }],
+      [{ text: "📩 Send Manual Proof", callback_data: "verify_manual_proof" }],
+      [{ text: "❌ Cancel", callback_data: "submit_cancel" }],
+      backHomeRow("submit", "home"),
+    ],
+  };
+}
+
+export function myChannelsText(channels: Channel[], page: number, hasNext: boolean): string {
+  if (channels.length === 0) {
+    return ["📭 You have not submitted any channels yet.", "", "Submit a useful channel to start tracking stats."].join("\n");
+  }
+
+  return [
+    "📊 My Channels",
+    `Page ${page + 1}${hasNext ? "" : " • Last page"}`,
+    "",
+    ...channels.map((channel) => myChannelSummary(channel)),
+    "",
+    "Choose a Channel ID below.",
+  ].join("\n\n");
+}
+
+export function myChannelsKeyboard(
+  channels: Channel[],
+  page: number,
+  hasNext: boolean,
+): TelegramInlineKeyboardMarkup {
+  const rows: KeyboardRows = buttonRows(
+    channels.map((channel) => ({ text: `🆔 ${channel.id}`, callback_data: `my_channel:${channel.id}` })),
+  );
+
+  rows.push([{ text: "📢 Submit New Channel", callback_data: "submit" }]);
+
+  const pager = [];
+  if (page > 0) {
+    pager.push({ text: "⬅️ Previous", callback_data: `page:my_channels:${page - 1}` });
+  }
+
+  if (hasNext) {
+    pager.push({ text: "Next ➡️", callback_data: `page:my_channels:${page + 1}` });
+  }
+
+  if (pager.length > 0) {
+    rows.push(pager);
+  }
+
+  rows.push(backHomeRow("home", "home"));
+  return { inline_keyboard: rows };
+}
+
+export function myChannelDetailsText(channel: Channel): string {
+  return myChannelSummary(channel);
+}
+
+export function myChannelStatsText(channel: Channel): string {
+  return [
+    "📈 Channel Stats",
+    "",
+    myChannelSummary(channel),
+  ].join("\n");
+}
+
+export function myChannelDetailsKeyboard(channelId: number): TelegramInlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [{ text: "📈 View Stats", callback_data: `my_channel_stats:${channelId}` }],
+      [
+        { text: "✏️ Edit Channel", callback_data: `my_channel_edit:${channelId}` },
+        { text: "🗑 Remove Channel", callback_data: `my_channel_remove:${channelId}` },
+      ],
+      backHomeRow("my_channels", "home"),
+    ],
+  };
+}
+
+export function myChannelRemoveConfirmText(channel: Channel): string {
+  return [
+    "🗑 Remove Channel",
+    "",
+    `Hide ${channel.title} from NexChannel Finder?`,
+    "You can ask an admin to restore it later.",
+  ].join("\n");
+}
+
+export function myChannelRemoveConfirmKeyboard(channelId: number): TelegramInlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [{ text: "✅ Confirm Remove", callback_data: `my_channel_confirm_remove:${channelId}` }],
+      backHomeRow(`my_channel:${channelId}`, "home"),
+    ],
+  };
+}
+
+export function myChannelEditText(channel: Channel): string {
+  return [
+    "✏️ Edit Channel",
+    "",
+    `🆔 Channel ID: ${channel.id}`,
+    `📢 ${channel.title}${verifiedBadge(channel)}`,
+    "",
+    "Choose a field to update.",
+  ].join("\n");
+}
+
+export function myChannelEditKeyboard(channelId: number): TelegramInlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [
+        { text: "📝 Description", callback_data: `mc:ef:${channelId}:d` },
+        { text: "🏷 Tags", callback_data: `mc:ef:${channelId}:t` },
+      ],
+      [
+        { text: "📂 Category", callback_data: `mc:ef:${channelId}:c` },
+        { text: "🌍 Language", callback_data: `mc:ef:${channelId}:l` },
+      ],
+      backHomeRow(`my_channel:${channelId}`, "home"),
+    ],
+  };
+}
+
+export function myChannelEditPromptText(channel: Channel, field: "description" | "tags"): string {
+  const label = field === "description" ? "description" : "tags";
+  return [
+    `✏️ Edit ${label}`,
+    "",
+    `🆔 Channel ID: ${channel.id}`,
+    "",
+    field === "description" ? "Send a short updated description." : "Send tags separated by commas.",
+  ].join("\n");
+}
+
+export function myChannelCategoryKeyboard(channelId: number, categories?: Category[]): TelegramInlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      ...buttonRows(
+        CATEGORIES.map((category) => ({
+          text: `${category.emoji} ${category.label}`,
+          callback_data: `mc:ec:${channelId}:${category.key}`,
+        })),
+      ),
+      backHomeRow(`my_channel_edit:${channelId}`, "home"),
+    ],
+  };
+}
+
+export function myChannelLanguageKeyboard(channelId: number): TelegramInlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      ...buttonRows(LANGUAGES.map((language) => ({ text: language, callback_data: `mc:el:${channelId}:${language}` }))),
+      backHomeRow(`my_channel_edit:${channelId}`, "home"),
+    ],
+  };
+}
+
+export function submitHelpText(categories: Category[]): string {
+  const categoryLines = categories.map((category) => `• ${category.name} (${category.slug})`);
+
+  return [
+    "📢 Submit Channel",
+    "",
+    "Tap Submit in the menu to use the guided flow.",
+    "",
+    "Categories:",
+    ...categoryLines,
+  ].join("\n");
+}
+
+export function reportHelpText(): string {
+  return [
+    "🚨 Report",
+    "",
+    "Use this format:",
+    "/report channel_id reason",
+    "",
+    "Example:",
+    "/report 12 Broken link",
+  ].join("\n");
+}
+
+export function reportChannelPromptText(channelId: number): string {
+  return [`🚨 Report channel #${channelId}`, "", "Choose a reason below."].join("\n");
+}
+
+export function reportReasonKeyboard(channelId: number): TelegramInlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [
+        { text: "🚫 Spam", callback_data: `report_reason:${channelId}:spam` },
+        { text: "🔞 Adult", callback_data: `report_reason:${channelId}:adult` },
+      ],
+      [
+        { text: "⚠️ Scam", callback_data: `report_reason:${channelId}:scam` },
+        { text: "©️ Copyright", callback_data: `report_reason:${channelId}:copyright` },
+      ],
+      [{ text: "❓ Other", callback_data: `report_reason:${channelId}:other` }],
+      backHomeRow(`channel:${channelId}`, "home"),
+    ],
+  };
+}
+
+export function adminPanelText(): string {
+  return [
+    "🛠 𝗔𝗱𝗺𝗶𝗻 𝗣𝗮𝗻𝗲𝗹",
+    "",
+    SECTION_DIVIDER,
+    "",
+    "📊 Manage channel submissions, approvals, hidden channels, reports, and verification.",
+    "",
+    SECTION_DIVIDER,
+  ].join("\n");
+}
+
+export function adminStatsText(stats: AdminStats): string {
+  return [
+    "📊 𝗕𝗼𝘁 𝗦𝘁𝗮𝘁𝘀",
+    "",
+    SECTION_DIVIDER,
+    "",
+    `📢 Total Channels: ${formatNumber(stats.totalChannels)}`,
+    `⏳ Pending: ${formatNumber(stats.pendingChannels)}`,
+    `✅ Approved: ${formatNumber(stats.approvedChannels)}`,
+    `🚫 Hidden: ${formatNumber(stats.hiddenChannels)}`,
+    `⭐ Verified: ${formatNumber(stats.verifiedChannels)}`,
+    `👥 Users: ${formatNumber(stats.totalUsers)}`,
+    `💾 Saved: ${formatNumber(stats.totalSaved)}`,
+    `⭐ Ratings: ${formatNumber(stats.totalRatings)}`,
+    `🚨 Reports: ${formatNumber(stats.totalReports)}`,
+    "",
+    SECTION_DIVIDER,
+  ].join("\n");
+}
+
+export function adminKeyboard(backCallback = "home"): TelegramInlineKeyboardMarkup {
+  void backCallback;
+
+  return {
+    inline_keyboard: [
+      [
+        { text: "📊 Stats", callback_data: "admin_stats" },
+        { text: "⏳ Pending", callback_data: "admin_pending" },
+      ],
+      [
+        { text: "✅ Approved", callback_data: "admin_approved" },
+        { text: "🚫 Hidden", callback_data: "admin_hidden" },
+      ],
+      [
+        { text: "🔎 Search", callback_data: "a:q" },
+        { text: "🚨 Reports", callback_data: "a:rp" },
+      ],
+      [
+        { text: "📢 Broadcast", callback_data: "a:b" },
+        { text: "⭐ Verified", callback_data: "a:v" },
+      ],
+      [{ text: "🏆 Post Leaderboard", callback_data: "admin_post_leaderboard" }],
+      [{ text: "🏠 Home", callback_data: "home" }],
+    ],
+  };
+}
+
+export function adminBackKeyboard(): TelegramInlineKeyboardMarkup {
+  return {
+    inline_keyboard: [backHomeRow("admin_back", "home")],
+  };
+}
+
+export function adminEmptyText(title: string): string {
+  return [title, "", "No channels found here right now."].join("\n");
+}
+
+export function adminStatusListText(
+  title: string,
+  channels: Channel[],
+  page: number,
+  hasNext: boolean,
+): string {
+  if (channels.length === 0) {
+    return adminEmptyText(title);
+  }
+
+  return [
+    title,
+    `Page ${page + 1}${hasNext ? "" : " • Last page"}`,
+    "",
+    ...channels.map(adminListLine),
+    "",
+    "Choose a Channel ID below.",
+  ].join("\n");
+}
+
+export function adminStatusListKeyboard(
+  status: "pending" | "approved" | "hidden",
+  channels: Channel[],
+  page: number,
+  hasNext: boolean,
+): TelegramInlineKeyboardMarkup {
+  const rows = buttonRows(
+    channels.map((channel) => ({ text: `🆔 ${channel.id}`, callback_data: `admin_channel:${channel.id}` })),
+  );
+  const pager: TelegramInlineKeyboardButton[] = [];
+  if (page > 0) {
+    pager.push({ text: "⬅️ Previous", callback_data: `page:admin_${status}:${page - 1}` });
+  }
+  if (hasNext) {
+    pager.push({ text: "Next ➡️", callback_data: `page:admin_${status}:${page + 1}` });
+  }
+  if (pager.length > 0) {
+    rows.push(pager);
+  }
+  rows.push(backHomeRow("admin_back", "home"));
+  return { inline_keyboard: rows };
+}
+
+export function adminChannelText(title: string, channel: Channel): string {
+  const category = categoryLabel(channel);
+  const channelType = isPrivateChannel(channel) ? "Private" : "Public";
+  const channelLink = isPrivateChannel(channel)
+    ? "Private Channel"
+    : (channelUsername(channel) || channel.channel_link || "Unknown");
+  const description = channel.description?.trim() || "No description added yet.";
+  const verCode = channel.verification_code ?? "—";
+  const ownerStatus = channel.owner_verified ? "✅ Verified" : verificationStatusLabel(channel);
+
+  return [
+    "📢 𝗖𝗵𝗮𝗻𝗻𝗲𝗹 𝗥𝗲𝘃𝗶𝗲𝘄",
+    "",
+    SECTION_DIVIDER,
+    "",
+    `🆔 𝗜𝗗: ${channel.id}`,
+    `📌 𝗡𝗮𝗺𝗲: ${channel.title}${verifiedBadge(channel)}`,
+    `🔐 𝗧𝘆𝗽𝗲: ${channelType}`,
+    `🔗 𝗖𝗵𝗮𝗻𝗻𝗲𝗹: ${channelLink}`,
+    `📂 𝗖𝗮𝘁𝗲𝗴𝗼𝗿𝘆: ${category}`,
+    `🌍 𝗟𝗮𝗻𝗴𝘂𝗮𝗴𝗲: ${channel.language ?? "Mixed"}`,
+    `✅ 𝗦𝘁𝗮𝘁𝘂𝘀: ${capitalize(channel.status)}`,
+    "",
+    `👤 𝗢𝘄𝗻𝗲𝗿: ${channel.owner_telegram_id ?? "Unknown"}`,
+    channel.admin_username ? `👤 𝗔𝗱𝗺𝗶𝗻 𝗨𝘀𝗲𝗿𝗻𝗮𝗺𝗲: ${channel.admin_username}` : null,
+    `🔐 𝗩𝗲𝗿𝗶𝗳𝗶𝗰𝗮𝘁𝗶𝗼𝗻: ${verCode}`,
+    `🔐 𝗢𝘄𝗻𝗲𝗿 𝗦𝘁𝗮𝘁𝘂𝘀: ${ownerStatus}`,
+    "",
+    SECTION_DIVIDER,
+    "",
+    `📝 𝗗𝗲𝘀𝗰𝗿𝗶𝗽𝘁𝗶𝗼𝗻: ${description}`,
+    "",
+    channel.tags ? `🏷 𝗧𝗮𝗴𝘀: ${channel.tags}` : null,
+    "",
+    SECTION_DIVIDER,
+    "",
+    `⭐ Rating: ${formatRating(channel.rating_average ?? 0)} / 5 (👥 ${formatNumber(channel.rating_count ?? 0)})`,
+    `👀 Clicks: ${formatNumber(channel.join_clicks ?? channel.clicks ?? 0)}`,
+    `🚨 Reports: ${formatNumber(channel.reports ?? channel.reports_count ?? 0)}`,
+  ]
+    .filter((line): line is string => line !== null)
+    .join("\n");
+}
+
+export function pendingChannelKeyboard(channelId: number): TelegramInlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [
+        { text: "✅ Approve", callback_data: `admin_approve:${channelId}` },
+        { text: "❌ Reject", callback_data: `admin_reject:${channelId}` },
+      ],
+      [
+        { text: "🚫 Hide", callback_data: `admin_hide:${channelId}` },
+        { text: "⭐ Verify Channel", callback_data: `admin_verify:${channelId}` },
+      ],
+      [{ text: "🔐 Mark Owner Verified", callback_data: `admin_owner_verify:${channelId}` }],
+      backHomeRow("admin_back", "home"),
+    ],
+  };
+}
+
+export function approvedChannelKeyboard(channelId: number): TelegramInlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [
+        { text: "🚫 Hide", callback_data: `admin_hide:${channelId}` },
+        { text: "⭐ Verify Channel", callback_data: `admin_verify:${channelId}` },
+      ],
+      [{ text: "🔐 Mark Owner Verified", callback_data: `admin_owner_verify:${channelId}` }],
+      [{ text: "☆ Remove Verification", callback_data: `admin_unverify:${channelId}` }],
+      backHomeRow("admin_back", "home"),
+    ],
+  };
+}
+
+export function hiddenChannelKeyboard(channelId: number): TelegramInlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [{ text: "✅ Approve Again", callback_data: `admin_approve:${channelId}` }],
+      [{ text: "🔐 Mark Owner Verified", callback_data: `admin_owner_verify:${channelId}` }],
+      [{ text: "🗑 Remove", callback_data: `a:rm:${channelId}` }],
+      backHomeRow("admin_back", "home"),
+    ],
+  };
+}
+
+export function rejectedChannelKeyboard(channelId: number): TelegramInlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [{ text: "✅ Approve", callback_data: `admin_approve:${channelId}` }],
+      [{ text: "🔐 Mark Owner Verified", callback_data: `admin_owner_verify:${channelId}` }],
+      [{ text: "🗑 Remove", callback_data: `a:rm:${channelId}` }],
+      backHomeRow("admin_back", "home"),
+    ],
+  };
+}
+
+export function adminSearchPromptText(): string {
+  return ["🔎 Search Channel", "", "Send a channel ID, title, username, category, language, tag, or admin username."].join("\n");
+}
+
+export function adminSearchResultsText(query: string, channels: Channel[]): string {
+  if (channels.length === 0) {
+    return [`🔎 Search Channel: ${query}`, "", "No matching channels found."].join("\n");
+  }
+
+  return [
+    `🔎 Search Channel: ${query}`,
+    "",
+    ...channels.map((channel, index) => `${index + 1}. ${adminListLine(channel)}`),
+    "",
+    "Choose a Channel ID below.",
+  ].join("\n");
+}
+
+export function adminSearchResultsKeyboard(channels: Channel[]): TelegramInlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      ...buttonRows(channels.map((channel) => ({ text: `🆔 ${channel.id}`, callback_data: `admin_channel:${channel.id}` }))),
+      backHomeRow("admin_back", "home"),
+    ],
+  };
+}
+
+export function broadcastPromptText(): string {
+  return ["📢 Broadcast", "", "Send the message you want to broadcast to all users."].join("\n");
+}
+
+export function broadcastConfirmText(message: string): string {
+  return ["Send this broadcast?", "", message].join("\n");
+}
+
+export function broadcastConfirmKeyboard(): TelegramInlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [
+        { text: "✅ Send", callback_data: "a:bs" },
+        { text: "❌ Cancel", callback_data: "a:bx" },
+      ],
+      backHomeRow("admin_back", "home"),
+    ],
+  };
+}
+
+export function paginationKeyboard(options: PaginationOptions): TelegramInlineKeyboardMarkup {
+  const rows: KeyboardRows = [];
+  const pager = [];
+
+  if (options.previousCallback) {
+    pager.push({ text: "⬅️ Previous", callback_data: options.previousCallback });
+  }
+
+  if (options.nextCallback) {
+    pager.push({ text: "Next ➡️", callback_data: options.nextCallback });
+  }
+
+  if (pager.length > 0) {
+    rows.push(pager);
+  }
+
+  rows.push(backHomeRow(options.backCallback ?? "home", options.homeCallback ?? "home"));
+
+  return { inline_keyboard: rows };
+}
+
+export function pendingSubmissionsText(submissions: Submission[]): string {
+  if (submissions.length === 0) {
+    return ["⏳ Pending Submissions", "", "No pending submissions."].join("\n");
+  }
+
+  return [
+    "⏳ Pending Submissions",
+    "",
+    ...submissions.map((submission) => `🆔 ${submission.id} • ${submission.title} • ${submission.category_slug}`),
+  ].join("\n");
+}
+
+export function pendingSubmissionsKeyboard(submissions: Submission[]): TelegramInlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      ...buttonRows(submissions.map((submission) => ({ text: `🆔 ${submission.id}`, callback_data: `admin_channel:${submission.id}` }))),
+      backHomeRow("admin_back", "home"),
+    ],
+  };
+}
+
+export function submissionDetailsText(submission: Submission): string {
+  const channelLabel =
+    submission.channel_type === "private" ? "Private Channel" : submission.username ?? "Public channel";
+
+  return [
+    "📢 New Channel Submission",
+    "",
+    `🆔 Channel ID: ${submission.id}`,
+    `📨 Channel: ${channelLabel}`,
+    `🔐 Type: ${submission.channel_type === "private" ? "Private" : "Public"}`,
+    `📂 Category: ${submission.category_slug}`,
+    submission.language ? `🌍 Language: ${submission.language}` : "",
+    submission.description ? `📝 Description: ${submission.description}` : "",
+    submission.tags ? `🏷 Tags: ${submission.tags}` : "",
+    `👤 Submitted by: ${submission.user_id}`,
+    submission.admin_username ? `🛠 Admin Username: ${submission.admin_username}` : "",
+    "🔐 Ownership Verification",
+    `Status: ${verificationStatusLabel(submission)}`,
+    `✅ Status: ${capitalize(submission.status)}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+export function adminReviewNotificationKeyboard(channelId: number): TelegramInlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [
+        { text: "✅ Approve", callback_data: `admin_approve:${channelId}` },
+        { text: "❌ Reject", callback_data: `admin_reject:${channelId}` },
+      ],
+      [
+        { text: "🚫 Hide", callback_data: `admin_hide:${channelId}` },
+        { text: "⭐ Verify", callback_data: `admin_verify:${channelId}` },
+      ],
+    ],
+  };
+}
+
+export function submissionReviewKeyboard(submissionId: number): TelegramInlineKeyboardMarkup {
+  return adminReviewNotificationKeyboard(submissionId);
+}
+
+export function adminSubmissionNotificationText(data: {
+  id: number;
+  title: string;
+  channel: string;
+  channelType: "public" | "private";
+  category: string;
+  language: string;
+  description: string;
+  tags: string;
+  adminUsername: string;
+  verificationCode: string;
+}): string {
+  const channelLabel = data.channelType === "private" ? "Private Channel" : data.channel;
+  const typeLabel = data.channelType === "private" ? "Private" : "Public";
+
+  return [
+    "📢 𝗡𝗲𝘄 𝗖𝗵𝗮𝗻𝗻𝗲𝗹 𝗦𝘂𝗯𝗺𝗶𝘀𝘀𝗶𝗼𝗻",
+    "",
+    SECTION_DIVIDER,
+    "",
+    `🆔 𝗖𝗵𝗮𝗻𝗻𝗲𝗹 𝗜𝗗: ${data.id}`,
+    `📌 𝗡𝗮𝗺𝗲: ${data.title}`,
+    `🔐 𝗧𝘆𝗽𝗲: ${typeLabel}`,
+    `🔗 𝗖𝗵𝗮𝗻𝗻𝗲𝗹: ${channelLabel}`,
+    `📂 𝗖𝗮𝘁𝗲𝗴𝗼𝗿𝘆: ${data.category}`,
+    `🌍 𝗟𝗮𝗻𝗴𝘂𝗮𝗴𝗲: ${data.language}`,
+    "",
+    `👤 𝗔𝗱𝗺𝗶𝗻 𝗨𝘀𝗲𝗿𝗻𝗮𝗺𝗲: ${data.adminUsername}`,
+    `🔐 𝗩𝗲𝗿𝗶𝗳𝗶𝗰𝗮𝘁𝗶𝗼𝗻: ${data.verificationCode}`,
+    "",
+    SECTION_DIVIDER,
+    "",
+    `📝 𝗗𝗲𝘀𝗰𝗿𝗶𝗽𝘁𝗶𝗼𝗻: ${data.description}`,
+    "",
+    `🏷 𝗧𝗮𝗴𝘀: ${data.tags}`,
+  ].join("\n");
+}
+
+export function channelSubmittedText(channelId: number): string {
+  return [
+    "✅ 𝗬𝗼𝘂𝗿 𝗰𝗵𝗮𝗻𝗻𝗲𝗹 𝗵𝗮𝘀 𝗯𝗲𝗲𝗻 𝘀𝘂𝗯𝗺𝗶𝘁𝘁𝗲𝗱!",
+    "",
+    `🆔 Channel ID: ${channelId}`,
+    "Status: ⏳ Waiting for admin approval",
+    "",
+    "Our admin will review your channel soon.",
+  ].join("\n");
+}
+
+export function channelSubmittedAdminNotifyFailedText(): string {
+  return [
+    "✅ Submitted successfully.",
+    "⚠️ Admin notification failed, but admin can review from Admin Panel.",
+  ].join("\n");
+}
+
+export function openReportsText(reports: Report[]): string {
+  if (reports.length === 0) {
+    return ["🚨 Open Reports", "", "No open reports."].join("\n");
+  }
+
+  return [
+    "🚨 Open Reports",
+    "",
+    ...reports.map((report) => {
+      const channel = report.channel_id ? `channel #${report.channel_id}` : "general report";
+      return `#${report.id} • ${channel}: ${report.reason}`;
+    }),
+  ].join("\n");
+}
+
+export function openReportsKeyboard(reports: Report[]): TelegramInlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      ...reports.map((report) => [
+        { text: `✅ Resolve #${report.id}`, callback_data: `a:rr:${report.id}` },
+      ]),
+      backHomeRow("admin_back", "home"),
+    ],
+  };
+}
+
+export function mainMenu(isAdmin: boolean): TelegramInlineKeyboardMarkup {
+  return mainMenuKeyboard(isAdmin);
+}
+
+export function forceSubscribeKeyboard(link?: string): TelegramInlineKeyboardMarkup {
+  return forceSubKeyboard(link);
+}
+
+export function backToMenuKeyboard(): TelegramInlineKeyboardMarkup {
+  return backHomeKeyboard("home");
+}
+
+export function adminMenuKeyboard(): TelegramInlineKeyboardMarkup {
+  return adminKeyboard();
+}
+
+function searchFilterRows(): KeyboardRows {
+  return [
+    [
+      { text: "🔥 Trending", callback_data: "sr:o:t" },
+      { text: "⭐ Top Rated", callback_data: "sr:o:r" },
+    ],
+    [
+      { text: "👀 Most Clicked", callback_data: "sr:o:c" },
+      { text: "🆕 Newest", callback_data: "sr:o:n" },
+    ],
+    [
+      { text: "✅ Verified", callback_data: "sr:f:v" },
+      { text: "🌍 Language", callback_data: "sr:l" },
+    ],
+  ];
+}
+
+function searchFilterSummary(state: SearchViewState): string {
+  const labels = [searchSortLabel(state.sort)];
+
+  if (state.verifiedOnly) {
+    labels.push("Verified");
+  }
+
+  if (state.language) {
+    labels.push(state.language);
+  }
+
+  return labels.join(" / ");
+}
+
+function searchSortLabel(sort: SearchSort): string {
+  switch (sort) {
+    case "rating":
+      return "Top Rated";
+    case "clicks":
+      return "Most Clicked";
+    case "newest":
+      return "Newest";
+    case "trending":
+    default:
+      return "Trending";
+  }
+}
+
+function myChannelSummary(channel: Channel): string {
+  return [
+    `📢 ${channel.title}${verifiedBadge(channel)}`,
+    `🆔 Channel ID: ${channel.id}`,
+    `🔗 ${channelDisplayLabel(channel)}`,
+    `📂 Category: ${categoryLabel(channel)}`,
+    `🌍 Language: ${channel.language ?? "Mixed"}`,
+    `✅ Status: ${capitalize(channel.status)}`,
+    `⭐ Rating: ${formatRating(channel.rating_average ?? 0)} / 5`,
+    `👥 Total Ratings: ${formatNumber(channel.rating_count ?? 0)}`,
+    `👀 Clicks: ${formatNumber(channel.join_clicks ?? channel.clicks ?? 0)}`,
+    `🔥 Score: ${formatNumber(channel.trending_score ?? 0)}`,
+  ].join("\n");
+}
+
+function channelListLine(channel: Channel, number: number): string {
+  return [
+    `${KEYCAP_NUMBERS[number - 1] ?? `${number}.`} ${unicodeBold(channel.title)}${verifiedBadge(channel)}`,
+    `🆔 ID: ${channel.id}`,
+    `📂 ${categoryLabel(channel)} • 🌍 ${channel.language ?? "Mixed"}`,
+    `⭐ ${formatRating(channel.rating_average ?? 0)} / 5 • 👀 ${formatNumber(channel.join_clicks ?? channel.clicks ?? 0)} clicks`,
+  ].join("\n");
+}
+
+function savedChannelLine(channel: Channel): string {
+  return [
+    `📢 ${channel.title}${verifiedBadge(channel)}`,
+    `🆔 ID: ${channel.id}`,
+    `📂 ${categoryLabel(channel)} • 🌍 ${channel.language ?? "Mixed"}`,
+    `⭐ ${formatRating(channel.rating_average ?? 0)} / 5 • 👀 ${formatNumber(channel.join_clicks ?? channel.clicks ?? 0)} clicks`,
+  ].join("\n");
+}
+
+function leaderboardSectionLines(title: string, channels: Channel[]): string[] {
+  if (channels.length === 0) {
+    return [unicodeBold(title), "No channels yet.", "", SECTION_DIVIDER, ""];
+  }
+
+  return [
+    unicodeBold(title),
+    ...channels.slice(0, 3).map((channel, index) => leaderboardChannelLine(channel, index + 1)),
+    "",
+    SECTION_DIVIDER,
+    "",
+  ];
+}
+
+function leaderboardChannelLine(channel: Channel, rank: number): string {
+  const medal = rank === 1 ? "🏆" : rank === 2 ? "🏅" : rank === 3 ? "🥉" : `${rank}.`;
+  const weeklyClicks = channel.weekly_clicks ?? channel.join_clicks ?? channel.clicks ?? 0;
+  const rating = channel.weekly_rating_average && channel.weekly_rating_average > 0
+    ? channel.weekly_rating_average
+    : channel.rating_average ?? 0;
+
+  return [
+    `${medal} ${rank}. ${channel.title}${verifiedBadge(channel)}`,
+    `🆔 ID: ${channel.id}`,
+    `⭐ ${formatRating(rating)} / 5 • 👀 ${formatNumber(weeklyClicks)} clicks`,
+  ].join("\n");
+}
+
+function weeklyPostChannelBlock(channel: Channel, rank: number): string {
+  const medals = ["🥇", "🥈", "🥉"];
+  const weeklyClicks = channel.weekly_clicks ?? channel.join_clicks ?? channel.clicks ?? 0;
+  const rating = channel.weekly_rating_average && channel.weekly_rating_average > 0
+    ? channel.weekly_rating_average
+    : channel.rating_average ?? 0;
+  const ratingCount = channel.weekly_rating_count && channel.weekly_rating_count > 0
+    ? channel.weekly_rating_count
+    : channel.rating_count ?? 0;
+  return [
+    `${medals[rank - 1] ?? "🏆"} ${unicodeBold(channel.title)}${verifiedBadge(channel)}`,
+    `🆔 ID: ${channel.id}`,
+    `📂 ${categoryLabel(channel)} • 🌍 ${channel.language ?? "Mixed"}`,
+    `⭐ ${formatRating(rating)} / 5 • 👥 ${formatNumber(ratingCount)} ratings`,
+    `👀 ${formatNumber(weeklyClicks)} clicks this week`,
+  ].join("\n");
+}
+
+function adminListLine(channel: Channel): string {
+  return `🆔 ${channel.id} • ${channel.title}${verifiedBadge(channel)} • ${capitalize(channel.status)} • ${categoryLabel(channel)}`;
+}
+
+function backHomeRow(backCallback = "home", homeCallback = "home"): KeyboardRows[number] {
+  return [
+    { text: "⬅️ Back", callback_data: backCallback },
+    { text: "🏠 Home", callback_data: homeCallback },
+  ];
+}
+
+function buttonRows(buttons: TelegramInlineKeyboardButton[], perRow = 2): KeyboardRows {
+  const rows: KeyboardRows = [];
+
+  for (let index = 0; index < buttons.length; index += perRow) {
+    rows.push(buttons.slice(index, index + perRow));
+  }
+
+  return rows;
+}
+
+function categoryLabel(channel: ChannelCardInput): string {
+  return channel.category_name ?? channel.category ?? channel.category_slug ?? "General";
+}
+
+function channelUsername(channel: ChannelCardInput): string {
+  if (isPrivateChannel(channel)) {
+    return "";
+  }
+
+  return channel.channel_username ?? channel.username ?? "";
+}
+
+function isPrivateChannel(channel: ChannelCardInput): boolean {
+  return channel.channel_type === "private";
+}
+
+function channelDisplayLabel(channel: ChannelCardInput): string {
+  if (isPrivateChannel(channel)) {
+    return "Private Channel";
+  }
+
+  return channel.channel_username ?? channel.username ?? "";
+}
+
+function channelJoinLink(channel: ChannelCardInput): string | undefined {
+  if (isPrivateChannel(channel)) {
+    return nonEmpty(channel.invite_link);
+  }
+
+  const directLink = nonEmpty(channel.channel_link) ?? nonEmpty(channel.link);
+  if (directLink) {
+    return directLink;
+  }
+
+  const username = nonEmpty(channel.channel_username) ?? nonEmpty(channel.username);
+  return username ? `https://t.me/${username.replace(/^@/, "")}` : undefined;
+}
+
+function botUrl(botUsername?: string): string | undefined {
+  const username = botUsername?.trim().replace(/^@/, "");
+  return username ? `https://t.me/${username}` : undefined;
+}
+
+function channelButtonText(channel: ChannelCardInput, index: number): string {
+  const prefix = KEYCAP_NUMBERS[index] ?? `${index + 1}.`;
+  return `${prefix} ${truncateButtonText(channel.title)}`;
+}
+
+function truncateButtonText(value: string, maxLength = 32): string {
+  const text = value.trim();
+  return text.length <= maxLength ? text : `${text.slice(0, maxLength - 1)}…`;
+}
+
+function nonEmpty(value: string | null | undefined): string | undefined {
+  const normalized = value?.trim();
+  return normalized || undefined;
+}
+
+function unicodeBold(value: string): string {
+  return Array.from(value, (character) => {
+    const codePoint = character.codePointAt(0) ?? 0;
+    if (codePoint >= 65 && codePoint <= 90) {
+      return String.fromCodePoint(0x1d5d4 + codePoint - 65);
+    }
+    if (codePoint >= 97 && codePoint <= 122) {
+      return String.fromCodePoint(0x1d5ee + codePoint - 97);
+    }
+    if (codePoint >= 48 && codePoint <= 57) {
+      return String.fromCodePoint(0x1d7ec + codePoint - 48);
+    }
+    return character;
+  }).join("");
+}
+
+function verifiedBadge(channel: Pick<Channel, "status" | "verified">): string {
+  return channel.status === "approved" && Boolean(channel.verified) ? " ✅" : "";
+}
+
+function verificationStatusLabel(
+  value: Partial<Pick<Channel, "owner_verified" | "verification_status">> | Pick<Submission, "owner_verified" | "verification_status">,
+): string {
+  if (value.owner_verified) {
+    return "✅ Verified";
+  }
+
+  switch (value.verification_status) {
+    case "verified":
+      return "✅ Verified";
+    case "manual_review":
+      return "⚠️ Manual Review";
+    case "failed":
+      return "❌ Failed";
+    case "pending":
+    default:
+      return "⏳ Pending";
+  }
+}
+
+function uniqueById(channels: Channel[]): Channel[] {
+  const seen = new Set<number>();
+  const result: Channel[] = [];
+
+  for (const channel of channels) {
+    if (seen.has(channel.id)) {
+      continue;
+    }
+
+    seen.add(channel.id);
+    result.push(channel);
+  }
+
+  return result;
+}
+
+function formatNumber(value: number): string {
+  return Number.isInteger(value) ? value.toString() : value.toFixed(1);
+}
+
+function formatRating(value: number): string {
+  return value > 0 ? formatNumber(value) : "0";
+}
+
+function compactCategoryName(value: string): string {
+  return value
+    .replace("Movies & Entertainment", "Movies")
+    .replace("Jobs & Internships", "Jobs")
+    .replace("Earning & Freelance", "Earning")
+    .replace("Deals & Offers", "Deals")
+    .replace("Editing / Creators", "Creators")
+    .replace("Tech / Telegram", "Tech");
+}
+
+function capitalize(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+// ─── YouTube Verification UI ──────────────────────────────────────────────────
+
+export function youtubeLockText(): string {
+  return [
+    "🔒 𝗬𝗼𝘂𝗧𝘂𝗯𝗲 𝗦𝘂𝗯𝘀𝗰𝗿𝗶𝗽𝘁𝗶𝗼𝗻 𝗥𝗲𝗾𝘂𝗶𝗿𝗲𝗱",
+    "",
+    SECTION_DIVIDER,
+    "",
+    "To use 𝗡𝗲𝘅𝗖𝗵𝗮𝗻𝗻𝗲𝗹 𝗙𝗶𝗻𝗱𝗲𝗿, please subscribe to our YouTube channel.",
+    "",
+    SECTION_DIVIDER,
+    "",
+    "1️⃣ Tap ▶️ Subscribe YouTube",
+    "2️⃣ Subscribe to the channel",
+    "3️⃣ Come back after 30 seconds",
+    "4️⃣ Tap ✅ I Subscribed",
+    "5️⃣ Send screenshot proof",
+    "",
+    SECTION_DIVIDER,
+    "",
+    "⚠️ Fake clicks will not unlock access.",
+  ].join("\n");
+}
+
+export function youtubeLockKeyboard(youtubeLink: string): TelegramInlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [{ text: "▶️ Subscribe YouTube", url: youtubeLink }],
+      [{ text: "✅ I Subscribed", callback_data: "youtube_subscribed_check" }],
+      [{ text: "🔄 Check Status", callback_data: "youtube_status" }],
+    ],
+  };
+}
+
+export function youtubeWaitText(): string {
+  return [
+    "⏳ 𝗪𝗮𝗶𝘁 𝟯𝟬 𝗦𝗲𝗰𝗼𝗻𝗱𝘀",
+    "",
+    "Please subscribe to our YouTube channel first.",
+    "",
+    "After 30 seconds, click ✅ I Subscribed again.",
+  ].join("\n");
+}
+
+export function youtubeSendPhotoText(): string {
+  return [
+    "📸 𝗦𝗲𝗻𝗱 𝗦𝗰𝗿𝗲𝗲𝗻𝘀𝗵𝗼𝘁 𝗣𝗿𝗼𝗼𝗳",
+    "",
+    "Please send a screenshot showing that you subscribed to our YouTube channel.",
+    "",
+    "Make sure the screenshot clearly shows:",
+    "✅ Subscribed button",
+    "▶️ Our YouTube channel",
+  ].join("\n");
+}
+
+export function youtubeProofPendingText(): string {
+  return [
+    "⏳ 𝗣𝗿𝗼𝗼𝗳 𝗦𝘂𝗯𝗺𝗶𝘁𝘁𝗲𝗱",
+    "",
+    "Your YouTube subscription proof has been sent for admin review.",
+    "",
+    "Please wait for approval.",
+  ].join("\n");
+}
+
+export function youtubeApprovedText(): string {
+  return [
+    "✅ 𝗬𝗼𝘂𝗧𝘂𝗯𝗲 𝗩𝗲𝗿𝗶𝗳𝗶𝗲𝗱",
+    "",
+    "Your YouTube subscription has been approved.",
+    "",
+    "You can now use NexChannel Finder Bot.",
+  ].join("\n");
+}
+
+export function youtubeRejectedText(): string {
+  return [
+    "❌ 𝗣𝗿𝗼𝗼𝗳 𝗥𝗲𝗷𝗲𝗰𝘁𝗲𝗱",
+    "",
+    "Please subscribe to our YouTube channel and send a clear screenshot proof again.",
+  ].join("\n");
+}
+
+export function youtubeStatusApprovedText(): string {
+  return [
+    "✅ 𝗬𝗼𝘂𝗧𝘂𝗯𝗲 𝗩𝗲𝗿𝗶𝗳𝗶𝗲𝗱",
+    "",
+    "You can use the bot now.",
+  ].join("\n");
+}
+
+export function youtubeStatusPendingText(): string {
+  return [
+    "⏳ 𝗣𝗿𝗼𝗼𝗳 𝗨𝗻𝗱𝗲𝗿 𝗥𝗲𝘃𝗶𝗲𝘄",
+    "",
+    "Please wait for admin approval.",
+  ].join("\n");
+}
+
+export function youtubeStatusRejectedText(): string {
+  return [
+    "❌ 𝗣𝗿𝗼𝗼𝗳 𝗥𝗲𝗷𝗲𝗰𝘁𝗲𝗱",
+    "",
+    "Please send a clearer screenshot.",
+  ].join("\n");
+}
+
+export function youtubeAdminReviewCaption(telegramId: number): string {
+  return [
+    "▶️ 𝗬𝗼𝘂𝗧𝘂𝗯𝗲 𝗦𝘂𝗯𝘀𝗰𝗿𝗶𝗽𝘁𝗶𝗼𝗻 𝗣𝗿𝗼𝗼𝗳",
+    "",
+    SECTION_DIVIDER,
+    "",
+    `👤 𝗨𝘀𝗲𝗿 𝗜𝗗: ${telegramId}`,
+    "🧾 𝗦𝘁𝗮𝘁𝘂𝘀: Pending Review",
+    "",
+    SECTION_DIVIDER,
+    "",
+    "Approve only if the screenshot clearly shows the user subscribed.",
+  ].join("\n");
+}
+
+export function youtubeAdminReviewKeyboard(telegramId: number): TelegramInlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [
+        { text: "✅ Approve", callback_data: `yt_approve:${telegramId}` },
+        { text: "❌ Reject", callback_data: `yt_reject:${telegramId}` },
+      ],
+    ],
+  };
+}
+
+export function youtubeAdminApprovedCaption(telegramId: number): string {
+  return [
+    "▶️ 𝗬𝗼𝘂𝗧𝘂𝗯𝗲 𝗦𝘂𝗯𝘀𝗰𝗿𝗶𝗽𝘁𝗶𝗼𝗻 𝗣𝗿𝗼𝗼𝗳",
+    "",
+    SECTION_DIVIDER,
+    "",
+    `👤 𝗨𝘀𝗲𝗿 𝗜𝗗: ${telegramId}`,
+    "🧾 𝗦𝘁𝗮𝘁𝘂𝘀: ✅ Approved",
+  ].join("\n");
+}
+
+export function youtubeAdminRejectedCaption(telegramId: number): string {
+  return [
+    "▶️ 𝗬𝗼𝘂𝗧𝘂𝗯𝗲 𝗦𝘂𝗯𝘀𝗰𝗿𝗶𝗽𝘁𝗶𝗼𝗻 𝗣𝗿𝗼𝗼𝗳",
+    "",
+    SECTION_DIVIDER,
+    "",
+    `👤 𝗨𝘀𝗲𝗿 𝗜𝗗: ${telegramId}`,
+    "🧾 𝗦𝘁𝗮𝘁𝘂𝘀: ❌ Rejected",
+  ].join("\n");
+}
+
+export function youtubeHomeKeyboard(): TelegramInlineKeyboardMarkup {
+  return {
+    inline_keyboard: [[{ text: "🏠 Open Bot", callback_data: "home" }]],
+  };
+}
+
+export function youtubeRetryKeyboard(youtubeLink: string): TelegramInlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [{ text: "▶️ Try Again", callback_data: "youtube_retry" }],
+    ],
+  };
+}

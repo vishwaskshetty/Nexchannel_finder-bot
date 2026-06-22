@@ -1,0 +1,20 @@
+{
+  "name": "nexchannel-finder-bot",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit --target ES2022 --module ESNext --moduleResolution Bundler --lib ES2022 --types @cloudflare/workers-types src/index.ts",
+    "db:migrations:local": "wrangler d1 migrations apply nexchannel_finder_db --local",
+    "db:migrations:remote": "wrangler d1 migrations apply nexchannel_finder_db --remote",
+    "db:local": "wrangler d1 execute nexchannel_finder_db --local --file=./schema.sql",
+    "db:remote": "wrangler d1 execute nexchannel_finder_db --remote --file=./schema.sql"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "latest",
+    "typescript": "latest",
+    "wrangler": "^4.102.0"
+  }
+}
