@@ -158,6 +158,9 @@ export function mainMenuKeyboard(isAdmin = false): TelegramInlineKeyboardMarkup 
       { text: "🏆 Leaderboard", callback_data: "leaderboard" },
     ],
     [
+      { text: "🤖 Bots", callback_data: "bots_section" },
+    ],
+    [
       { text: "📊 My Channels", callback_data: "my_channels" },
       { text: "ℹ️ Help", callback_data: "help" },
     ],

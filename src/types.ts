@@ -18,6 +18,7 @@ export interface Env {
   TOP_CHANNELS_BANNER_FILE_ID?: string;
   ADD_CHANNEL_BANNER_FILE_ID?: string;
   LEADERBOARD_BANNER_FILE_ID?: string;
+  BOTS_BANNER_FILE_ID?: string;
 }
 
 export type ChatId = number | string;

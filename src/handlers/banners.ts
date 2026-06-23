@@ -10,7 +10,7 @@ import { getBotSetting, setBotSetting, setAdminState, clearAdminState, getAdminS
 import type { BotContext, Env, TelegramMessage, TelegramCallbackQuery } from "../types";
 import { TelegramClient } from "../telegram";
 
-export type BannerType = "welcome" | "categories" | "top" | "add_channel" | "leaderboard";
+export type BannerType = "welcome" | "categories" | "top" | "add_channel" | "leaderboard" | "bots";
 
 const BANNER_KEY_MAP: Record<BannerType, string> = {
   welcome: "WELCOME_BANNER_FILE_ID",
@@ -18,6 +18,7 @@ const BANNER_KEY_MAP: Record<BannerType, string> = {
   top: "TOP_CHANNELS_BANNER_FILE_ID",
   add_channel: "ADD_CHANNEL_BANNER_FILE_ID",
   leaderboard: "LEADERBOARD_BANNER_FILE_ID",
+  bots: "BOTS_BANNER_FILE_ID",
 };
 
 const BANNER_LABELS: Record<BannerType, string> = {
@@ -26,6 +27,7 @@ const BANNER_LABELS: Record<BannerType, string> = {
   top: "Top Channels",
   add_channel: "Add Channel",
   leaderboard: "Leaderboard",
+  bots: "Bots",
 };
 
 const VALID_BANNER_TYPES = Object.keys(BANNER_KEY_MAP) as BannerType[];
@@ -82,6 +84,7 @@ const SHORT_CAPTIONS: Record<BannerType, string> = {
   top: "<b>🔥 Top Channels</b>",
   add_channel: "<b>➕ Add Your Channel</b>",
   leaderboard: "<b>🏆 Leaderboard</b>",
+  bots: "<b>🤖 Bot Directory</b>",
 };
 
 export async function sendBannerPost(

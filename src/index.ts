@@ -64,6 +64,13 @@ import {
   handleCancelBannerCallback,
   handleDebugBannersCommand,
 } from "./handlers/banners";
+import {
+  handleBotsSection,
+  handleEarningBots,
+  handleBotsNotify,
+  handleSubmitBotSoon,
+  handleDebugBotsCommand,
+} from "./handlers/bots";
 
 
 import {
@@ -427,6 +434,10 @@ async function handleMessage(ctx: BotContext, message: TelegramMessage): Promise
     await handleDebugBannersCommand(ctx, message);
     return;
   }
+  if (command?.name === "debugbots") {
+    await handleDebugBotsCommand(ctx, message);
+    return;
+  }
 
 
   if (await handleAdminText(ctx, message, text)) {
@@ -732,6 +743,24 @@ async function handleCallbackQuery(ctx: BotContext, query: TelegramCallbackQuery
 
   if (data === "featured" || data === "back:featured") {
     await showSectionPage(ctx, chatId, messageId, "featured", 0, query.message);
+    return;
+  }
+
+  // --- Bots Section ---
+  if (data === "bots_section") {
+    await handleBotsSection(ctx, chatId, messageId, query.message);
+    return;
+  }
+  if (data === "bots_earning") {
+    await handleEarningBots(ctx, chatId, messageId, query.message);
+    return;
+  }
+  if (data === "bots_notify") {
+    await handleBotsNotify(ctx, chatId, userId, messageId, query.message);
+    return;
+  }
+  if (data === "submit_bot_soon") {
+    await handleSubmitBotSoon(ctx, chatId, messageId, query.message);
     return;
   }
 

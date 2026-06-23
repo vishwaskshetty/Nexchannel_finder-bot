@@ -307,3 +307,46 @@ ON CONFLICT(channel_username) DO UPDATE SET
 UPDATE channels
 SET trending_score = ((join_clicks * 2.0) + (rating_average * 10.0) + (rating_count * 2.0) - (reports * 10.0)),
   updated_at = CURRENT_TIMESTAMP;
+
+CREATE TABLE IF NOT EXISTS bots (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  owner_telegram_id INTEGER,
+  bot_username TEXT UNIQUE,
+  bot_link TEXT,
+  title TEXT NOT NULL,
+  description TEXT,
+  category TEXT DEFAULT 'other',
+  language TEXT DEFAULT 'English',
+  tags TEXT,
+  status TEXT DEFAULT 'pending',
+  verified INTEGER DEFAULT 0,
+  featured INTEGER DEFAULT 0,
+  clicks INTEGER DEFAULT 0,
+  reports INTEGER DEFAULT 0,
+  rating_total INTEGER DEFAULT 0,
+  rating_count INTEGER DEFAULT 0,
+  rating_average REAL DEFAULT 0,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS bot_interest_users (
+  telegram_id INTEGER PRIMARY KEY,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS bot_submissions (
+  telegram_id INTEGER PRIMARY KEY,
+  step TEXT NOT NULL,
+  bot_username TEXT,
+  title TEXT,
+  description TEXT,
+  category TEXT,
+  language TEXT,
+  tags TEXT,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_bots_status ON bots(status);
+CREATE INDEX IF NOT EXISTS idx_bots_category ON bots(category);
+CREATE INDEX IF NOT EXISTS idx_bots_username ON bots(bot_username);
