@@ -249,6 +249,11 @@ export async function sendOrEdit(
     }
 
     console.warn("Could not edit message, sending a new one instead.", edited);
+    try {
+      await telegram.call("deleteMessage", { chat_id: String(chatId), message_id: messageId });
+    } catch (e) {
+      // ignore
+    }
   }
 
   const sent = await telegram.sendMessage(chatId, text, options);

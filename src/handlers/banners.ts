@@ -129,44 +129,42 @@ export async function editOrSendPage(
   text: string,
   keyboard: any,
   type: BannerType,
+  isSamePage: boolean = false,
 ): Promise<void> {
   const hasPhoto = message?.photo && message.photo.length > 0;
   
-  if (hasPhoto && messageId) {
+  if (hasPhoto && messageId && isSamePage) {
     if (text.length <= 1024) {
       await ctx.telegram.editMessageCaption(chatId, messageId, text, {
         parse_mode: "HTML",
         reply_markup: keyboard,
       });
     } else {
-      // If we need to show long text but we currently have a photo message,
-      // editing caption will fail limit. We should delete and send new or edit caption short and send new msg.
-      // But user said: "If text length <= 1024: Use sendPhoto with caption. If > 1024: short caption + send full text"
-      // Wait, top channels page is made sure to be < 1024 chars.
-      // So editMessageCaption is fine here.
       await ctx.telegram.editMessageCaption(chatId, messageId, text.substring(0, 1024), {
         parse_mode: "HTML",
         reply_markup: keyboard,
       });
     }
-  } else if (messageId && !hasPhoto) {
+  } else if (messageId) {
     const fileId = await resolveBannerFileId(ctx.env, type);
-    if (fileId) {
-      // Message is text, but banner exists -> send new photo message
-      // Note: we just send it, the user didn't ask to delete the old one explicitly, but ideally we should?
-      // "If message is text and banner exists: send new photo message with caption."
-      // We will delete the old message just to keep chat clean.
+    
+    // If it had a photo but different page, we delete it so we can send a new message
+    // If it's a text message and we now have a banner, we delete it to send photo
+    if ((hasPhoto && !isSamePage) || (!hasPhoto && fileId)) {
       try {
         await ctx.telegram.call("deleteMessage", { chat_id: String(chatId), message_id: messageId });
       } catch (e) {}
       await sendBannerPost(chatId, ctx.env, type, text, keyboard);
-    } else {
-      // Message is text and no banner -> edit text
+    } else if (!hasPhoto && !fileId) {
+      // It was text, and still no banner, so just edit text
       await ctx.telegram.editMessageText(chatId, messageId, text, {
         parse_mode: "HTML",
         reply_markup: keyboard,
         disable_web_page_preview: true,
       });
+    } else {
+      // Fallback
+      await sendBannerPost(chatId, ctx.env, type, text, keyboard);
     }
   } else {
     // No message id -> new send
@@ -350,8 +348,12 @@ export async function handleBannersStatusCommand(
   for (const type of VALID_BANNER_TYPES) {
     const label = BANNER_LABELS[type as BannerType];
     const fileId = await resolveBannerFileId(ctx.env, type as BannerType);
-    const status = fileId ? "✅ Set" : "❌ Missing";
-    lines.push(`${status} — ${label}`);
+    if (fileId) {
+      const shortId = fileId.length > 15 ? fileId.substring(0, 15) + "..." : fileId;
+      lines.push(`${label}: ✅ Set ${shortId}`);
+    } else {
+      lines.push(`${label}: ❌ Missing`);
+    }
   }
 
   lines.push("");
@@ -360,4 +362,42 @@ export async function handleBannersStatusCommand(
   await ctx.telegram.sendMessage(message.chat.id, lines.join("\n"), {
     reply_markup: homeLinkKeyboard(),
   });
+}
+
+export async function handleDebugBannersCommand(
+  ctx: BotContext,
+  message: TelegramMessage,
+): Promise<void> {
+  const userId = message.from?.id;
+  if (!userId || !ctx.adminIds.has(userId)) {
+    await ctx.telegram.sendMessage(message.chat.id, "❌ Admin only command.");
+    return;
+  }
+
+  const lines: string[] = ["🛠 𝗗𝗲𝗯𝘂𝗴 𝗕𝗮𝗻𝗻𝗲𝗿𝘀", ""];
+
+  for (const type of VALID_BANNER_TYPES) {
+    const key = BANNER_KEY_MAP[type];
+    
+    // Check D1
+    const dbValue = await getBotSetting(ctx.env, key);
+    // Check Env
+    const envValue = (ctx.env as unknown as Record<string, string | undefined>)[key];
+    
+    let resolvedValue = "None";
+    let source = "None";
+    
+    if (dbValue?.trim()) {
+      resolvedValue = dbValue.trim();
+      source = "D1 bot_settings";
+    } else if (typeof envValue === "string" && envValue.trim()) {
+      resolvedValue = envValue.trim();
+      source = "wrangler env";
+    }
+    
+    const shortId = resolvedValue.length > 15 ? resolvedValue.substring(0, 15) + "..." : resolvedValue;
+    lines.push(`${key} = ${shortId}\nSource: ${source}\n`);
+  }
+
+  await ctx.telegram.sendMessage(message.chat.id, lines.join("\n"));
 }

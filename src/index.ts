@@ -62,6 +62,7 @@ import {
   handleBannersStatusCommand,
   handleBannerPhotoUpload,
   handleCancelBannerCallback,
+  handleDebugBannersCommand,
 } from "./handlers/banners";
 
 
@@ -420,6 +421,10 @@ async function handleMessage(ctx: BotContext, message: TelegramMessage): Promise
   }
   if (command?.name === "banners") {
     await handleBannersStatusCommand(ctx, message);
+    return;
+  }
+  if (command?.name === "debugbanners") {
+    await handleDebugBannersCommand(ctx, message);
     return;
   }
 
