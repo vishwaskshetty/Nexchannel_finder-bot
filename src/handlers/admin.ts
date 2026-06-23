@@ -314,8 +314,17 @@ export async function handleAdminText(
     return true;
   }
 
+  if (state.mode === "banner_wait") {
+    await ctx.telegram.sendMessage(
+      message.chat.id,
+      "📸 Please send a photo (not text) to set the banner.",
+    );
+    return true;
+  }
+
   return false;
 }
+
 
 export async function handleAdminPanel(
   ctx: BotContext,

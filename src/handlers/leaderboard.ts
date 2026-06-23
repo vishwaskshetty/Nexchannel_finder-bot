@@ -8,6 +8,7 @@ import {
   leaderboardText,
   weeklyLeaderboardPostKeyboard,
 } from "../ui";
+import { getBotSetting } from "../db";
 
 export async function handleLeaderboard(
   ctx: BotContext,
@@ -21,6 +22,12 @@ export async function handleLeaderboard(
     ...sections.clicked,
     ...sections.newChannels,
   ];
+
+  // Send leaderboard banner only on fresh opens (no edit)
+  if (!messageId) {
+    const { sendBrandBanner } = await import("./banners");
+    await sendBrandBanner(ctx, chatId, "leaderboard");
+  }
 
   await sendOrEdit(ctx.telegram, chatId, messageId, leaderboardText(sections), {
     reply_markup: leaderboardKeyboard(buttons),
@@ -42,6 +49,16 @@ export async function postWeeklyLeaderboard(env: Env): Promise<LeaderboardPostRe
     return { status: "empty" };
   }
 
+  // Send leaderboard banner to public channel first
+  const bannerFileId = await resolveLeaderboardBannerFileId(env);
+  if (bannerFileId) {
+    try {
+      await telegram.sendPhoto(channel, bannerFileId);
+    } catch (error) {
+      console.warn("Leaderboard banner send to public channel failed:", error);
+    }
+  }
+
   const data = await telegram.sendMessage(channel, formatWeeklyLeaderboard(channels), {
     reply_markup: weeklyLeaderboardPostKeyboard(env.BOT_USERNAME),
     disable_web_page_preview: true,
@@ -60,6 +77,20 @@ export async function postWeeklyLeaderboard(env: Env): Promise<LeaderboardPostRe
 
 export function publicPostChannel(env: Env): string {
   return env.PUBLIC_POST_CHANNEL?.trim() ?? "";
+}
+
+async function resolveLeaderboardBannerFileId(env: Env): Promise<string | null> {
+  // Check D1 first
+  const dbValue = await getBotSetting(env, "LEADERBOARD_BANNER_FILE_ID");
+  if (dbValue?.trim()) {
+    return dbValue.trim();
+  }
+  // Fallback to env var
+  const envValue = env.LEADERBOARD_BANNER_FILE_ID;
+  if (envValue?.trim()) {
+    return envValue.trim();
+  }
+  return null;
 }
 
 async function getLeaderboardSections(env: Env): Promise<LeaderboardSections> {

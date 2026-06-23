@@ -58,6 +58,13 @@ import {
   handleImportStatsCommand,
 } from "./handlers/import";
 import {
+  handleSetBannerCommand,
+  handleBannersStatusCommand,
+  handleBannerPhotoUpload,
+  sendBrandBanner,
+} from "./handlers/banners";
+
+import {
   getChannel,
   incrementChannelClicks,
   listFeaturedChannels,
@@ -304,12 +311,21 @@ async function handleMessage(ctx: BotContext, message: TelegramMessage): Promise
 
   // Handle photo messages for YouTube proof (no command parsing needed)
   if (hasPhoto && message.from) {
+    // First check if admin is uploading a banner photo
+    if (ctx.adminIds.has(message.from.id)) {
+      const handled = await handleBannerPhotoUpload(ctx, message);
+      if (handled) {
+        return;
+      }
+    }
+
     const handled = await handleYoutubePhotoProof(ctx, message);
     if (handled) {
       return;
     }
     // Fall through if not a YouTube proof photo
   }
+
 
   if (!text) {
     return;
@@ -395,6 +411,17 @@ async function handleMessage(ctx: BotContext, message: TelegramMessage): Promise
     await handleImportStatsCommand(ctx, message);
     return;
   }
+
+  // --- Banner Commands ---
+  if (command?.name === "setbanner") {
+    await handleSetBannerCommand(ctx, message, command.args);
+    return;
+  }
+  if (command?.name === "banners") {
+    await handleBannersStatusCommand(ctx, message);
+    return;
+  }
+
 
   if (await handleAdminText(ctx, message, text)) {
     return;
@@ -876,16 +903,22 @@ async function showSectionPage(
   const channels = rows.slice(0, pageSize);
   const hasNext = rows.length > pageSize;
   const title = section === "top"
-    ? "🔥 Top Channels"
+    ? "🔥 𝗧𝗼𝗽 𝗖𝗵𝗮𝗻𝗻𝗲𝗹𝘀"
     : section === "featured"
-      ? "⭐ Featured Channels"
-      : "🆕 New Channels";
+      ? "⭐ 𝗙𝗲𝗮𝘁𝘂𝗿𝗲𝗱 𝗖𝗵𝗮𝗻𝗻𝗲𝗹𝘀"
+      : "🆕 𝗡𝗲𝘄 𝗖𝗵𝗮𝗻𝗻𝗲𝗹𝘀";
+
+  // Send Top Channels banner on first page, fresh open only
+  if (section === "top" && safePage === 0 && !messageId) {
+    await sendBrandBanner(ctx, chatId, "top");
+  }
 
   await sendOrEdit(ctx.telegram, chatId, messageId, channelResultsText(title, channels), {
     reply_markup: channelResultsKeyboard(channels, "home", section, safePage, hasNext),
     disable_web_page_preview: true,
   });
 }
+
 
 async function ensureSubscribed(ctx: BotContext, message: TelegramMessage): Promise<boolean> {
   if (!message.from) {

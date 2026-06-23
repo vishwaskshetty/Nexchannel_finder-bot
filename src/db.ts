@@ -1764,3 +1764,48 @@ export async function getImportStats(env: Env) {
     lastBatch: lastBatch || null,
   };
 }
+
+// ─── Bot Settings ────────────────────────────────────────────────────────────
+
+export async function getBotSetting(env: Env, key: string): Promise<string | null> {
+  try {
+    await env.DB.prepare(
+      `CREATE TABLE IF NOT EXISTS bot_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )`,
+    ).run();
+
+    const row = await env.DB.prepare(
+      "SELECT value FROM bot_settings WHERE key = ?",
+    )
+      .bind(key)
+      .first<{ value: string }>();
+
+    return row?.value ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function setBotSetting(env: Env, key: string, value: string): Promise<void> {
+  await env.DB.prepare(
+    `CREATE TABLE IF NOT EXISTS bot_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )`,
+  ).run();
+
+  await env.DB.prepare(
+    `INSERT INTO bot_settings (key, value, updated_at)
+    VALUES (?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(key) DO UPDATE SET
+      value = excluded.value,
+      updated_at = CURRENT_TIMESTAMP`,
+  )
+    .bind(key, value)
+    .run();
+}
+

@@ -63,8 +63,16 @@ export async function handleSubmitStart(
   }
 
   await startSubmissionDraft(ctx.env, userId);
+
+  // Send add_channel banner only on fresh start (no messageId)
+  if (!messageId) {
+    const { sendBrandBanner } = await import("./banners");
+    await sendBrandBanner(ctx, chatId, "add_channel");
+  }
+
   await handleSubmitHelp(ctx, chatId, messageId);
 }
+
 
 export async function handleSubmitCommand(
   ctx: BotContext,

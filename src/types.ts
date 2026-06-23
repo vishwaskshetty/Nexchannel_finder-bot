@@ -12,6 +12,12 @@ export interface Env {
   PUBLIC_POST_CHANNEL?: string;
   BOT_USERNAME?: string;
   YOUTUBE_CHANNEL_LINK?: string;
+  // Banner file IDs (can be set in wrangler.toml or via /setbanner command)
+  WELCOME_BANNER_FILE_ID?: string;
+  CATEGORIES_BANNER_FILE_ID?: string;
+  TOP_CHANNELS_BANNER_FILE_ID?: string;
+  ADD_CHANNEL_BANNER_FILE_ID?: string;
+  LEADERBOARD_BANNER_FILE_ID?: string;
 }
 
 export type ChatId = number | string;
@@ -267,7 +273,8 @@ export type AdminStateMode =
   | "import_paste_wait"
   | "import_csv_wait"
   | "add_public_wait"
-  | "add_private_wait";
+  | "add_private_wait"
+  | "banner_wait";
 
 export interface AdminState {
   telegram_id: number;

@@ -59,7 +59,7 @@ const SECTION_DIVIDER = "━━━━━━━━━━━━━━";
 const KEYCAP_NUMBERS = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"];
 
 export const HOME_TEXT = [
-  "👋 𝗪𝗲𝗹𝗰𝗼𝗺𝗲 𝘁𝗼 𝗡𝗲𝘅𝗖𝗵𝗮𝗻𝗻𝗲𝗹 𝗙𝗶𝗻𝗱𝗲𝗿",
+  "⚡ 𝗡𝗘𝗫𝗖𝗛𝗔𝗡𝗡𝗘𝗟 𝗙𝗜𝗡𝗗𝗘𝗥",
   "",
   "Discover trusted Telegram channels, rate your favorites, and grow your own community.",
   "",
@@ -67,6 +67,7 @@ export const HOME_TEXT = [
   "",
   "Choose an option below.",
 ].join("\n");
+
 
 export const HELP_TEXT = [
   "ℹ️ 𝗛𝗲𝗹𝗽 𝗖𝗲𝗻𝘁𝗲𝗿",
@@ -101,7 +102,7 @@ export const SUCCESS_TEXT = "✅ Done successfully!";
 export const ERROR_TEXT = "❌ Something went wrong. Please try again.";
 
 export const SUBMIT_INTRO_TEXT = [
-  "📢 Submit Your Channel",
+  "➕ 𝗔𝗗𝗗 𝗖𝗛𝗔𝗡𝗡𝗘𝗟",
   "",
   "Send your channel username or link.",
   "",
@@ -128,6 +129,7 @@ export const SUBMIT_INTRO_TEXT = [
   "",
   "Choose the channel type below.",
 ].join("\n");
+
 
 export const PRIVATE_CHANNEL_RULE_TEXT = [
   "🔐 Private Channel",
@@ -236,11 +238,12 @@ export function submitNavKeyboard(backCallback = "s:b"): TelegramInlineKeyboardM
 
 export function categoriesText(categories: Category[]): string {
   if (categories.length === 0) {
-    return ["📂 Categories", "", EMPTY_STATE_TEXT].join("\n");
+    return ["📂 𝗖𝗔𝗧𝗘𝗚𝗢𝗥𝗜𝗘𝗦", "", EMPTY_STATE_TEXT].join("\n");
   }
 
-  return ["📂 Categories", "", "Choose a category below."].join("\n");
+  return ["📂 𝗖𝗔𝗧𝗘𝗚𝗢𝗥𝗜𝗘𝗦", "", "Choose a category below."].join("\n");
 }
+
 
 export function categoriesKeyboard(
   categories?: Category[],

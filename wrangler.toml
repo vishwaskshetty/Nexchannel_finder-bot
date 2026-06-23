@@ -28,6 +28,14 @@ PUBLIC_POST_CHANNEL = "-1004322240719"
 BOT_USERNAME = "NexChannelFinderBot"
 YOUTUBE_CHANNEL_LINK = "https://www.youtube.com/channel/UCjq-Zx6uTK1h8skXd8MoOHg?sub_confirmation=1"
 
+# Banner file IDs — set these via /setbanner admin command or copy file_id here
+WELCOME_BANNER_FILE_ID = ""
+CATEGORIES_BANNER_FILE_ID = ""
+TOP_CHANNELS_BANNER_FILE_ID = ""
+ADD_CHANNEL_BANNER_FILE_ID = ""
+LEADERBOARD_BANNER_FILE_ID = ""
+
+
 # Auto weekly leaderboard post
 
 # Runs Sunday 7:00 PM IST

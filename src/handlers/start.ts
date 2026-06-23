@@ -10,6 +10,7 @@ import {
   mainMenu,
 } from "../ui";
 import { handleSubmitStart } from "./submit";
+import { sendBrandBanner } from "./banners";
 
 export async function handleStart(ctx: BotContext, message: TelegramMessage): Promise<void> {
   if (message.from) {
@@ -50,6 +51,11 @@ export async function showHome(
       disable_web_page_preview: true,
     });
     return;
+  }
+
+  // Send welcome banner only on fresh /start (no messageId = not a callback edit)
+  if (!messageId) {
+    await sendBrandBanner(ctx, chatId, "welcome");
   }
 
   await sendOrEdit(ctx.telegram, chatId, messageId, HOME_TEXT, {
