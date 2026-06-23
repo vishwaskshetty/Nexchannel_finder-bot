@@ -160,12 +160,14 @@ CREATE TABLE IF NOT EXISTS admin_states (
   mode TEXT NOT NULL
     CHECK (mode IN (
       'broadcast_wait', 'broadcast_confirm', 'search_wait',
-      'import_paste_wait', 'import_csv_wait', 'add_public_wait', 'add_private_wait'
+      'import_paste_wait', 'import_csv_wait', 'add_public_wait', 'add_private_wait',
+      'banner_wait'
     )),
   payload TEXT,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (telegram_id) REFERENCES users(telegram_id) ON DELETE CASCADE
 );
+
 
 CREATE TABLE IF NOT EXISTS search_states (
   telegram_id INTEGER PRIMARY KEY,

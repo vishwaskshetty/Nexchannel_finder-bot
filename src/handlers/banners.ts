@@ -2,13 +2,12 @@
  * Banner system for NexChannel Finder Bot.
  *
  * Banners are sent as Telegram photos before main page sections.
- * File IDs are stored in wrangler.toml env vars (fallback) or in the
- * bot_settings D1 table (set via /setbanner admin command).
+ * File IDs are stored in D1 bot_settings table (set via /setbanner admin command)
+ * or fall back to wrangler.toml env variables.
  */
 
-import { getBotSetting, setBotSetting } from "../db";
-import { setAdminState, clearAdminState, getAdminState } from "../db";
-import type { BotContext, Env, TelegramMessage } from "../types";
+import { getBotSetting, setBotSetting, setAdminState, clearAdminState, getAdminState } from "../db";
+import type { BotContext, Env, TelegramMessage, TelegramCallbackQuery } from "../types";
 
 export type BannerType = "welcome" | "categories" | "top" | "add_channel" | "leaderboard";
 
@@ -28,20 +27,46 @@ const BANNER_LABELS: Record<BannerType, string> = {
   leaderboard: "Leaderboard",
 };
 
+const VALID_BANNER_TYPES = Object.keys(BANNER_KEY_MAP) as BannerType[];
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function parseBannerType(arg: string): BannerType | null {
+  const normalized = arg.trim().toLowerCase() as BannerType;
+  return VALID_BANNER_TYPES.includes(normalized) ? normalized : null;
+}
+
+function cancelBannerKeyboard() {
+  return {
+    inline_keyboard: [
+      [{ text: "❌ Cancel", callback_data: "cancel_banner" }],
+    ],
+  };
+}
+
+function homeLinkKeyboard() {
+  return {
+    inline_keyboard: [
+      [{ text: "🏠 Home", callback_data: "home" }],
+    ],
+  };
+}
+
+// ─── Banner Resolution & Sending ──────────────────────────────────────────────
+
 /**
- * Resolves a banner file ID by checking the D1 bot_settings table first,
- * then falling back to the wrangler.toml env variable.
+ * Resolves a banner file ID:
+ *  1. D1 bot_settings table (highest priority — set by /setbanner)
+ *  2. wrangler.toml / Cloudflare env variable
  */
 async function resolveBannerFileId(env: Env, type: BannerType): Promise<string | null> {
   const key = BANNER_KEY_MAP[type];
 
-  // 1. Check D1 table first (highest priority — set by /setbanner)
   const dbValue = await getBotSetting(env, key);
   if (dbValue?.trim()) {
     return dbValue.trim();
   }
 
-  // 2. Fall back to wrangler.toml / Cloudflare env var
   const envValue = (env as Record<string, string | undefined>)[key];
   if (typeof envValue === "string" && envValue.trim()) {
     return envValue.trim();
@@ -66,23 +91,15 @@ export async function sendBrandBanner(
     }
     await ctx.telegram.sendPhoto(chatId, fileId);
   } catch (error) {
-    // Never crash — banners are decorative
     console.warn(`Banner send failed for ${type}:`, error);
   }
 }
 
 // ─── /setbanner command ───────────────────────────────────────────────────────
 
-const VALID_BANNER_TYPES = Object.keys(BANNER_KEY_MAP) as BannerType[];
-
-function parseBannerType(arg: string): BannerType | null {
-  const normalized = arg.trim().toLowerCase() as BannerType;
-  return VALID_BANNER_TYPES.includes(normalized) ? normalized : null;
-}
-
 /**
  * Admin command: /setbanner <type>
- * Starts a two-step flow: admin sends the command, then sends a photo.
+ * Step 1: Validates type, stores banner_wait state, prompts admin to send photo.
  */
 export async function handleSetBannerCommand(
   ctx: BotContext,
@@ -90,47 +107,59 @@ export async function handleSetBannerCommand(
   args: string,
 ): Promise<void> {
   const userId = message.from?.id;
+  const chatId = message.chat.id;
+
   if (!userId || !ctx.adminIds.has(userId)) {
-    await ctx.telegram.sendMessage(message.chat.id, "❌ Admin access only.");
+    await ctx.telegram.sendMessage(chatId, "❌ Admin only command.");
     return;
   }
 
   const bannerType = parseBannerType(args);
+
   if (!bannerType) {
     await ctx.telegram.sendMessage(
-      message.chat.id,
+      chatId,
       [
-        "❌ Invalid banner type.",
+        "⚙️ 𝗦𝗲𝘁 𝗕𝗮𝗻𝗻𝗲𝗿",
         "",
-        "Usage: /setbanner <type>",
+        "Use one of these:",
         "",
-        "Valid types:",
-        "• welcome",
-        "• categories",
-        "• top",
-        "• add_channel",
-        "• leaderboard",
+        "/setbanner welcome",
+        "/setbanner categories",
+        "/setbanner top",
+        "/setbanner add_channel",
+        "/setbanner leaderboard",
       ].join("\n"),
     );
     return;
   }
 
-  // Store which banner type admin is uploading in admin_states payload
+  // Save waiting state in D1
   await setAdminState(ctx.env, userId, "banner_wait", bannerType);
 
   await ctx.telegram.sendMessage(
-    message.chat.id,
+    chatId,
     [
-      `📸 Send the banner image for: 𝗔${BANNER_LABELS[bannerType].toUpperCase()}`,
+      "📸 𝗦𝗲𝗻𝗱 𝗕𝗮𝗻𝗻𝗲𝗿 𝗜𝗺𝗮𝗴𝗲",
       "",
-      "Send the photo now.",
+      `Now send the image for:`,
+      "",
+      `${BANNER_LABELS[bannerType]}`,
+      "",
+      "Recommended size:",
+      "1280x720 or 640x360",
+      "",
+      "Send as photo, not document.",
     ].join("\n"),
+    { reply_markup: cancelBannerKeyboard() },
   );
 }
 
+// ─── Photo handler (Step 2) ───────────────────────────────────────────────────
+
 /**
  * Handles the photo message sent by admin during /setbanner flow.
- * Returns true if the photo was handled as a banner upload.
+ * Returns true if the photo was consumed as a banner upload.
  */
 export async function handleBannerPhotoUpload(
   ctx: BotContext,
@@ -141,8 +170,13 @@ export async function handleBannerPhotoUpload(
     return false;
   }
 
-  // Check if admin is in banner_wait state
-  const state = await getAdminState(ctx.env, userId);
+  let state;
+  try {
+    state = await getAdminState(ctx.env, userId);
+  } catch {
+    return false;
+  }
+
   if (state?.mode !== "banner_wait" || !state.payload) {
     return false;
   }
@@ -152,42 +186,74 @@ export async function handleBannerPhotoUpload(
     return false;
   }
 
-  // Get the largest photo size file_id
   const photos = message.photo;
   if (!photos || photos.length === 0) {
     return false;
   }
 
+  // Use the largest available photo size
   const bestPhoto = photos[photos.length - 1];
   const fileId = bestPhoto.file_id;
   const key = BANNER_KEY_MAP[bannerType];
 
-  // Save to D1
+  // Save file_id to D1 bot_settings
   await setBotSetting(ctx.env, key, fileId);
 
-  // Clear admin state
+  // Clear admin waiting state
   await clearAdminState(ctx.env, userId);
 
   await ctx.telegram.sendMessage(
     message.chat.id,
     [
-      `✅ Banner saved for: 𝗔${BANNER_LABELS[bannerType].toUpperCase()}`,
+      "✅ 𝗕𝗮𝗻𝗻𝗲𝗿 𝗦𝗮𝘃𝗲𝗱",
       "",
-      `File ID: \`${fileId}\``,
+      `Type: ${bannerType}`,
+      `Setting: ${key}`,
       "",
-      "You can also copy this file_id to wrangler.toml:",
-      `${key} = "${fileId}"`,
+      "File ID:",
+      fileId,
+      "",
+      "This banner will now be used in the bot.",
     ].join("\n"),
+    { reply_markup: homeLinkKeyboard() },
   );
 
   return true;
+}
+
+// ─── cancel_banner callback ───────────────────────────────────────────────────
+
+/**
+ * Handles the cancel_banner inline button callback.
+ * Clears admin state and acknowledges.
+ */
+export async function handleCancelBannerCallback(
+  ctx: BotContext,
+  query: TelegramCallbackQuery,
+): Promise<void> {
+  const userId = query.from.id;
+
+  try {
+    await clearAdminState(ctx.env, userId);
+  } catch {
+    // ignore
+  }
+
+  await ctx.telegram.answerCallbackQuery(query.id, "❌ Banner setup cancelled.");
+
+  if (query.message) {
+    await ctx.telegram.sendMessage(
+      query.message.chat.id,
+      "❌ Banner setup cancelled.",
+    );
+  }
 }
 
 // ─── /banners command ─────────────────────────────────────────────────────────
 
 /**
  * Admin command: /banners
- * Shows the status of all configured banners.
+ * Shows the current status of all banner slots.
  */
 export async function handleBannersStatusCommand(
   ctx: BotContext,
@@ -195,13 +261,14 @@ export async function handleBannersStatusCommand(
 ): Promise<void> {
   const userId = message.from?.id;
   if (!userId || !ctx.adminIds.has(userId)) {
-    await ctx.telegram.sendMessage(message.chat.id, "❌ Admin access only.");
+    await ctx.telegram.sendMessage(message.chat.id, "❌ Admin only command.");
     return;
   }
 
   const lines: string[] = ["🖼 𝗕𝗮𝗻𝗻𝗲𝗿 𝗦𝘁𝗮𝘁𝘂𝘀", ""];
 
-  for (const [type, label] of Object.entries(BANNER_LABELS) as [BannerType, string][]) {
+  for (const type of VALID_BANNER_TYPES) {
+    const label = BANNER_LABELS[type as BannerType];
     const fileId = await resolveBannerFileId(ctx.env, type as BannerType);
     const status = fileId ? "✅ Set" : "❌ Missing";
     lines.push(`${status} — ${label}`);
@@ -210,5 +277,7 @@ export async function handleBannersStatusCommand(
   lines.push("");
   lines.push("Use /setbanner <type> to upload a banner.");
 
-  await ctx.telegram.sendMessage(message.chat.id, lines.join("\n"));
+  await ctx.telegram.sendMessage(message.chat.id, lines.join("\n"), {
+    reply_markup: homeLinkKeyboard(),
+  });
 }

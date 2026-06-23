@@ -61,8 +61,10 @@ import {
   handleSetBannerCommand,
   handleBannersStatusCommand,
   handleBannerPhotoUpload,
+  handleCancelBannerCallback,
   sendBrandBanner,
 } from "./handlers/banners";
+
 
 import {
   getChannel,
@@ -554,10 +556,17 @@ async function handleCallbackQuery(ctx: BotContext, query: TelegramCallbackQuery
     return;
   }
 
+  // cancel_banner — must be before subscription gate
+  if (data === "cancel_banner") {
+    await handleCancelBannerCallback(ctx, query);
+    return;
+  }
+
   if (isAdminCallbackData(data)) {
     await handleAdminCallbackQuery(ctx, query, chatId, messageId);
     return;
   }
+
 
   const subscription = ctx.adminIds.has(userId)
     ? { subscribed: true as const }
