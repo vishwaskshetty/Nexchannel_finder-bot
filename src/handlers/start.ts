@@ -10,7 +10,7 @@ import {
   mainMenu,
 } from "../ui";
 import { handleSubmitStart } from "./submit";
-import { sendBrandBanner } from "./banners";
+import { editOrSendPage } from "./banners";
 
 export async function handleStart(ctx: BotContext, message: TelegramMessage): Promise<void> {
   if (message.from) {
@@ -36,6 +36,7 @@ export async function showHome(
   chatId: number,
   userId: number,
   messageId?: number,
+  message?: TelegramMessage,
 ): Promise<void> {
   // Admins can manage the bot even if they have not joined the force-sub channel.
   const subscription = ctx.adminIds.has(userId)
@@ -53,15 +54,15 @@ export async function showHome(
     return;
   }
 
-  // Send welcome banner only on fresh /start (no messageId = not a callback edit)
-  if (!messageId) {
-    await sendBrandBanner(ctx, chatId, "welcome");
-  }
-
-  await sendOrEdit(ctx.telegram, chatId, messageId, HOME_TEXT, {
-    reply_markup: mainMenu(ctx.adminIds.has(userId)),
-    disable_web_page_preview: true,
-  });
+  await editOrSendPage(
+    ctx,
+    chatId,
+    messageId,
+    message,
+    HOME_TEXT,
+    mainMenu(ctx.adminIds.has(userId)),
+    "welcome",
+  );
 }
 
 export async function handleHelp(

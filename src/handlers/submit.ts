@@ -42,18 +42,27 @@ export async function handleSubmitHelp(
   ctx: BotContext,
   chatId: number,
   messageId?: number,
+  message?: TelegramMessage,
 ): Promise<void> {
-  await sendOrEdit(ctx.telegram, chatId, messageId, SUBMIT_INTRO_TEXT, {
-    reply_markup: submitStartKeyboard(),
-    disable_web_page_preview: true,
-  });
+  const { editOrSendPage } = await import("./banners");
+  await editOrSendPage(
+    ctx,
+    chatId,
+    messageId,
+    message,
+    SUBMIT_INTRO_TEXT,
+    submitStartKeyboard(),
+    "add_channel",
+  );
 }
+
 
 export async function handleSubmitStart(
   ctx: BotContext,
   chatId: number,
   userId: number,
   messageId?: number,
+  message?: TelegramMessage,
 ): Promise<void> {
   const { isYouTubeVerified, showYouTubeRequiredForSubmit } = await import("./youtube");
   const verified = await isYouTubeVerified(ctx.env, userId);
@@ -64,13 +73,7 @@ export async function handleSubmitStart(
 
   await startSubmissionDraft(ctx.env, userId);
 
-  // Send add_channel banner only on fresh start (no messageId)
-  if (!messageId) {
-    const { sendBrandBanner } = await import("./banners");
-    await sendBrandBanner(ctx, chatId, "add_channel");
-  }
-
-  await handleSubmitHelp(ctx, chatId, messageId);
+  await handleSubmitHelp(ctx, chatId, messageId, message);
 }
 
 

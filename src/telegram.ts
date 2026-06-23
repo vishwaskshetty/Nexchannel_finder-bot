@@ -98,6 +98,21 @@ export class TelegramClient {
     });
   }
 
+  async editMessageCaption(
+    chatId: ChatId,
+    messageId: number,
+    caption: string,
+    options: Omit<MessageOptions, "parse_mode"> & { parse_mode?: "HTML" | "Markdown" | "MarkdownV2" } = {},
+  ): Promise<TelegramApiResponse<TelegramMessage | true>> {
+    return this.call<TelegramMessage | true>("editMessageCaption", {
+      chat_id: String(chatId),
+      message_id: messageId,
+      caption,
+      ...options,
+    });
+  }
+
+
   async answerCallbackQuery(
     callbackQueryId: string,
     text?: string,
@@ -158,6 +173,7 @@ export class TelegramClient {
     photo: string,
     options: {
       caption?: string;
+      parse_mode?: "HTML" | "Markdown" | "MarkdownV2";
       reply_markup?: TelegramInlineKeyboardMarkup;
     } = {},
   ): Promise<TelegramApiResponse<TelegramMessage>> {

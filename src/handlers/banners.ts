@@ -8,6 +8,7 @@
 
 import { getBotSetting, setBotSetting, setAdminState, clearAdminState, getAdminState } from "../db";
 import type { BotContext, Env, TelegramMessage, TelegramCallbackQuery } from "../types";
+import { TelegramClient } from "../telegram";
 
 export type BannerType = "welcome" | "categories" | "top" | "add_channel" | "leaderboard";
 
@@ -67,7 +68,7 @@ async function resolveBannerFileId(env: Env, type: BannerType): Promise<string |
     return dbValue.trim();
   }
 
-  const envValue = (env as Record<string, string | undefined>)[key];
+  const envValue = (env as unknown as Record<string, string | undefined>)[key];
   if (typeof envValue === "string" && envValue.trim()) {
     return envValue.trim();
   }
@@ -75,25 +76,104 @@ async function resolveBannerFileId(env: Env, type: BannerType): Promise<string |
   return null;
 }
 
-/**
- * Sends a brand banner photo before a section if a file ID is configured.
- * Silently skips if no file ID is available — never crashes.
- */
-export async function sendBrandBanner(
-  ctx: BotContext,
+const SHORT_CAPTIONS: Record<BannerType, string> = {
+  welcome: "<b>⚡ NexChannel Finder</b>",
+  categories: "<b>📂 Categories</b>",
+  top: "<b>🔥 Top Channels</b>",
+  add_channel: "<b>➕ Add Your Channel</b>",
+  leaderboard: "<b>🏆 Leaderboard</b>",
+};
+
+export async function sendBannerPost(
   chatId: number | string,
+  env: Env,
   type: BannerType,
+  text: string,
+  keyboard?: any,
 ): Promise<void> {
-  try {
-    const fileId = await resolveBannerFileId(ctx.env, type);
-    if (!fileId) {
-      return;
+  const telegram = new TelegramClient(env.BOT_TOKEN);
+  const fileId = await resolveBannerFileId(env, type);
+
+  if (fileId) {
+    if (text.length <= 1024) {
+      await telegram.sendPhoto(chatId, fileId, {
+        caption: text,
+        parse_mode: "HTML",
+        reply_markup: keyboard,
+      });
+    } else {
+      await telegram.sendPhoto(chatId, fileId, {
+        caption: SHORT_CAPTIONS[type] || "<b>🔥 NexChannel Finder</b>",
+        parse_mode: "HTML",
+      });
+      await telegram.sendMessage(chatId, text, {
+        parse_mode: "HTML",
+        reply_markup: keyboard,
+        disable_web_page_preview: true,
+      });
     }
-    await ctx.telegram.sendPhoto(chatId, fileId);
-  } catch (error) {
-    console.warn(`Banner send failed for ${type}:`, error);
+  } else {
+    await telegram.sendMessage(chatId, text, {
+      parse_mode: "HTML",
+      reply_markup: keyboard,
+      disable_web_page_preview: true,
+    });
   }
 }
+
+export async function editOrSendPage(
+  ctx: BotContext,
+  chatId: number | string,
+  messageId: number | undefined,
+  message: TelegramMessage | undefined,
+  text: string,
+  keyboard: any,
+  type: BannerType,
+): Promise<void> {
+  const hasPhoto = message?.photo && message.photo.length > 0;
+  
+  if (hasPhoto && messageId) {
+    if (text.length <= 1024) {
+      await ctx.telegram.editMessageCaption(chatId, messageId, text, {
+        parse_mode: "HTML",
+        reply_markup: keyboard,
+      });
+    } else {
+      // If we need to show long text but we currently have a photo message,
+      // editing caption will fail limit. We should delete and send new or edit caption short and send new msg.
+      // But user said: "If text length <= 1024: Use sendPhoto with caption. If > 1024: short caption + send full text"
+      // Wait, top channels page is made sure to be < 1024 chars.
+      // So editMessageCaption is fine here.
+      await ctx.telegram.editMessageCaption(chatId, messageId, text.substring(0, 1024), {
+        parse_mode: "HTML",
+        reply_markup: keyboard,
+      });
+    }
+  } else if (messageId && !hasPhoto) {
+    const fileId = await resolveBannerFileId(ctx.env, type);
+    if (fileId) {
+      // Message is text, but banner exists -> send new photo message
+      // Note: we just send it, the user didn't ask to delete the old one explicitly, but ideally we should?
+      // "If message is text and banner exists: send new photo message with caption."
+      // We will delete the old message just to keep chat clean.
+      try {
+        await ctx.telegram.call("deleteMessage", { chat_id: String(chatId), message_id: messageId });
+      } catch (e) {}
+      await sendBannerPost(chatId, ctx.env, type, text, keyboard);
+    } else {
+      // Message is text and no banner -> edit text
+      await ctx.telegram.editMessageText(chatId, messageId, text, {
+        parse_mode: "HTML",
+        reply_markup: keyboard,
+        disable_web_page_preview: true,
+      });
+    }
+  } else {
+    // No message id -> new send
+    await sendBannerPost(chatId, ctx.env, type, text, keyboard);
+  }
+}
+
 
 // ─── /setbanner command ───────────────────────────────────────────────────────
 

@@ -11,23 +11,26 @@ import {
   languagesKeyboard,
 } from "../ui";
 import { searchChannels } from "../db";
-import { sendBrandBanner } from "./banners";
+import { editOrSendPage } from "./banners";
+import type { TelegramMessage } from "../types";
 
 export async function handleCategories(
   ctx: BotContext,
   chatId: number,
   messageId?: number,
+  message?: TelegramMessage,
 ): Promise<void> {
   const categories = await listCategories(ctx.env);
 
-  // Send categories banner only on fresh opens (no edit)
-  if (!messageId) {
-    await sendBrandBanner(ctx, chatId, "categories");
-  }
-
-  await sendOrEdit(ctx.telegram, chatId, messageId, categoriesText(categories), {
-    reply_markup: categoriesKeyboard(categories),
-  });
+  await editOrSendPage(
+    ctx,
+    chatId,
+    messageId,
+    message,
+    categoriesText(categories),
+    categoriesKeyboard(categories),
+    "categories",
+  );
 }
 
 export async function handleCategoryChannels(

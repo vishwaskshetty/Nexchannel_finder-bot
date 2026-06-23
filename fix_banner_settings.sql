@@ -1,0 +1,12 @@
+CREATE TABLE IF NOT EXISTS bot_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS admin_states (
+  telegram_id INTEGER PRIMARY KEY,
+  state TEXT,
+  data TEXT,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);

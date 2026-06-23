@@ -1,6 +1,6 @@
 import { listLeaderboardFallback, listWeeklyLeaderboard } from "../db";
 import { TelegramClient, sendOrEdit } from "../telegram";
-import type { BotContext, Channel, Env } from "../types";
+import type { BotContext, Channel, Env, TelegramMessage } from "../types";
 import {
   LeaderboardSections,
   formatWeeklyLeaderboard,
@@ -14,6 +14,7 @@ export async function handleLeaderboard(
   ctx: BotContext,
   chatId: number,
   messageId?: number,
+  message?: TelegramMessage,
 ): Promise<void> {
   const sections = await getLeaderboardSections(ctx.env);
   const buttons = [
@@ -23,16 +24,16 @@ export async function handleLeaderboard(
     ...sections.newChannels,
   ];
 
-  // Send leaderboard banner only on fresh opens (no edit)
-  if (!messageId) {
-    const { sendBrandBanner } = await import("./banners");
-    await sendBrandBanner(ctx, chatId, "leaderboard");
-  }
-
-  await sendOrEdit(ctx.telegram, chatId, messageId, leaderboardText(sections), {
-    reply_markup: leaderboardKeyboard(buttons),
-    disable_web_page_preview: true,
-  });
+  const { editOrSendPage } = await import("./banners");
+  await editOrSendPage(
+    ctx,
+    chatId,
+    messageId,
+    message,
+    leaderboardText(sections),
+    leaderboardKeyboard(buttons),
+    "leaderboard",
+  );
 }
 
 export type LeaderboardPostResult =
@@ -49,28 +50,16 @@ export async function postWeeklyLeaderboard(env: Env): Promise<LeaderboardPostRe
     return { status: "empty" };
   }
 
-  // Send leaderboard banner to public channel first
-  const bannerFileId = await resolveLeaderboardBannerFileId(env);
-  if (bannerFileId) {
-    try {
-      await telegram.sendPhoto(channel, bannerFileId);
-    } catch (error) {
-      console.warn("Leaderboard banner send to public channel failed:", error);
-    }
-  }
+  const { sendBannerPost } = await import("./banners");
+  await sendBannerPost(
+    channel,
+    env,
+    "leaderboard",
+    formatWeeklyLeaderboard(channels),
+    weeklyLeaderboardPostKeyboard(env.BOT_USERNAME)
+  );
 
-  const data = await telegram.sendMessage(channel, formatWeeklyLeaderboard(channels), {
-    reply_markup: weeklyLeaderboardPostKeyboard(env.BOT_USERNAME),
-    disable_web_page_preview: true,
-  });
 
-  if (!data.ok) {
-    console.error("Leaderboard post failed:", data);
-    return {
-      status: "error",
-      description: data.description ?? "Unknown Telegram API error",
-    };
-  }
 
   return { status: "posted" };
 }

@@ -62,7 +62,6 @@ import {
   handleBannersStatusCommand,
   handleBannerPhotoUpload,
   handleCancelBannerCallback,
-  sendBrandBanner,
 } from "./handlers/banners";
 
 
@@ -687,7 +686,7 @@ async function handleCallbackQuery(ctx: BotContext, query: TelegramCallbackQuery
   }
 
   if (data === "home" || data === "menu" || data === "back:home") {
-    await showHome(ctx, chatId, userId, messageId);
+    await showHome(ctx, chatId, userId, messageId, query.message);
     return;
   }
 
@@ -697,7 +696,7 @@ async function handleCallbackQuery(ctx: BotContext, query: TelegramCallbackQuery
   }
 
   if (data === "categories" || data === "back:categories") {
-    await handleCategories(ctx, chatId, messageId);
+    await handleCategories(ctx, chatId, messageId, query.message);
     return;
   }
 
@@ -707,7 +706,7 @@ async function handleCallbackQuery(ctx: BotContext, query: TelegramCallbackQuery
   }
 
   if (data === "leaderboard" || data === "back:leaderboard") {
-    await handleLeaderboard(ctx, chatId, messageId);
+    await handleLeaderboard(ctx, chatId, messageId, query.message);
     return;
   }
 
@@ -717,17 +716,17 @@ async function handleCallbackQuery(ctx: BotContext, query: TelegramCallbackQuery
   }
 
   if (data === "top" || data === "back:top") {
-    await showSectionPage(ctx, chatId, messageId, "top", 0);
+    await showSectionPage(ctx, chatId, messageId, "top", 0, query.message);
     return;
   }
 
   if (data === "new" || data === "back:new") {
-    await showSectionPage(ctx, chatId, messageId, "new", 0);
+    await showSectionPage(ctx, chatId, messageId, "new", 0, query.message);
     return;
   }
 
   if (data === "featured" || data === "back:featured") {
-    await showSectionPage(ctx, chatId, messageId, "featured", 0);
+    await showSectionPage(ctx, chatId, messageId, "featured", 0, query.message);
     return;
   }
 
@@ -748,9 +747,9 @@ async function handleCallbackQuery(ctx: BotContext, query: TelegramCallbackQuery
     } else if (section === "my_channels") {
       await handleMyChannels(ctx, chatId, messageId, userId, page);
     } else if (section === "leaderboard") {
-      await handleLeaderboard(ctx, chatId, messageId);
+      await handleLeaderboard(ctx, chatId, messageId, query.message);
     } else if (section === "top" || section === "featured" || section === "new") {
-      await showSectionPage(ctx, chatId, messageId, section, page);
+      await showSectionPage(ctx, chatId, messageId, section, page, query.message);
     } else if (section === "category" && parts.length >= 4) {
       await handleCategoryChannels(
         ctx,
@@ -781,7 +780,7 @@ async function handleCallbackQuery(ctx: BotContext, query: TelegramCallbackQuery
   }
 
   if (data === "submit" || data === "submit_channel" || data === "add_channel" || data === "start_submit") {
-    await handleSubmitStart(ctx, chatId, userId, messageId);
+    await handleSubmitStart(ctx, chatId, userId, messageId, query.message);
     return;
   }
 
@@ -831,7 +830,7 @@ async function handleSubscriptionCheck(
   }
 
   await ctx.telegram.answerCallbackQuery(query.id, "Thanks. You are all set.");
-  await showHome(ctx, chatId, query.from.id, messageId);
+  await showHome(ctx, chatId, query.from.id, messageId, query.message);
 }
 
 async function handleRatingCallback(
@@ -900,6 +899,7 @@ async function showSectionPage(
   messageId: number | undefined,
   section: "top" | "featured" | "new",
   page: number,
+  message?: TelegramMessage,
 ): Promise<void> {
   const pageSize = 5;
   const safePage = Math.max(0, page);
@@ -917,15 +917,24 @@ async function showSectionPage(
       ? "⭐ 𝗙𝗲𝗮𝘁𝘂𝗿𝗲𝗱 𝗖𝗵𝗮𝗻𝗻𝗲𝗹𝘀"
       : "🆕 𝗡𝗲𝘄 𝗖𝗵𝗮𝗻𝗻𝗲𝗹𝘀";
 
-  // Send Top Channels banner on first page, fresh open only
-  if (section === "top" && safePage === 0 && !messageId) {
-    await sendBrandBanner(ctx, chatId, "top");
+  // Send Top Channels banner on first page
+  if (section === "top" && safePage === 0) {
+    const { editOrSendPage } = await import("./handlers/banners");
+    await editOrSendPage(
+      ctx,
+      chatId,
+      messageId,
+      message,
+      channelResultsText(title, channels),
+      channelResultsKeyboard(channels, "home", section, safePage, hasNext),
+      "top"
+    );
+  } else {
+    await sendOrEdit(ctx.telegram, chatId, messageId, channelResultsText(title, channels), {
+      reply_markup: channelResultsKeyboard(channels, "home", section, safePage, hasNext),
+      disable_web_page_preview: true,
+    });
   }
-
-  await sendOrEdit(ctx.telegram, chatId, messageId, channelResultsText(title, channels), {
-    reply_markup: channelResultsKeyboard(channels, "home", section, safePage, hasNext),
-    disable_web_page_preview: true,
-  });
 }
 
 
