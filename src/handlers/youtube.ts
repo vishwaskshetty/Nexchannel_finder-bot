@@ -22,7 +22,7 @@ import {
   setYoutubeRetry,
   upsertYoutubeVerification,
 } from "../db";
-import { getAdminReviewChannelId, getYoutubeChannelLink, sendOrEdit } from "../telegram";
+import { getAdminReviewChannelId, getYoutubeChannelLink, sendOrEdit, isAdmin } from "../telegram";
 import type { BotContext, Env, TelegramCallbackQuery, TelegramMessage } from "../types";
 import {
   backToMenuKeyboard,
@@ -101,11 +101,7 @@ export async function checkYoutubeVerification(
 }
 
 export async function isYouTubeVerified(env: Env, telegramId: number): Promise<boolean> {
-  const adminIdsStr = env.ADMIN_IDS?.trim() ? env.ADMIN_IDS : env.ADMIN_ID;
-  if (adminIdsStr) {
-    const adminIds = new Set(adminIdsStr.split(",").map(id => Number(id.trim())).filter(id => !isNaN(id)));
-    if (adminIds.has(telegramId)) return true;
-  }
+  if (isAdmin(telegramId, env)) return true;
 
   try {
     const userRow = await env.DB.prepare("SELECT youtube_verified FROM users WHERE telegram_id = ?").bind(telegramId).first();

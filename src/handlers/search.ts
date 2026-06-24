@@ -1,6 +1,6 @@
 import { getSearchState, searchChannels, setSearchState } from "../db";
 import { sendOrEdit } from "../telegram";
-import type { BotContext, SearchSort, SearchState, TelegramMessage } from "../types";
+import type { BotContext, SearchSort, SearchState, TelegramMessage, TelegramInlineQuery } from "../types";
 import {
   PAGE_SIZE,
   searchHelpText,
@@ -9,6 +9,7 @@ import {
   searchPromptKeyboard,
   searchResultsKeyboard,
   searchResultsText,
+  backToMenuKeyboard,
 } from "../ui";
 
 interface SearchViewState {
@@ -141,6 +142,21 @@ async function showSearchPage(
     limit: PAGE_SIZE + 1,
     offset: safePage * PAGE_SIZE,
   });
+
+  if (channels.length === 0 && safePage === 0) {
+    await sendOrEdit(
+      ctx.telegram,
+      chatId,
+      messageId,
+      "<b>😕 No channels found</b>\n\nTry another keyword or browse categories.",
+      {
+        reply_markup: backToMenuKeyboard(),
+        parse_mode: "HTML",
+      },
+    );
+    return;
+  }
+
   const visibleChannels = channels.slice(0, PAGE_SIZE);
   const hasNext = channels.length > PAGE_SIZE;
 
@@ -218,4 +234,49 @@ function parseSearchAction(
   }
 
   return null;
+}
+
+export async function handleInlineQuery(
+  ctx: BotContext,
+  query: TelegramInlineQuery
+): Promise<void> {
+  const searchTerm = query.query.trim();
+  let channels = [];
+  
+  if (searchTerm.length >= 2) {
+    channels = await searchChannels(ctx.env, {
+      query: searchTerm,
+      sort: "trending",
+      language: null,
+      verifiedOnly: false,
+      limit: 10,
+      offset: 0,
+    });
+  } else {
+    const { listTopChannels } = await import("../db");
+    channels = await listTopChannels(ctx.env, 10);
+  }
+
+  const results = channels.map((channel) => {
+    const verified = channel.verified ? "✅" : "";
+    return {
+      type: "article",
+      id: String(channel.id),
+      title: `${channel.title} ${verified}`.trim(),
+      description: `${channel.category} • ⭐ ${channel.rating_average ?? 0}/5 • 👀 ${channel.clicks ?? 0} clicks`,
+      input_message_content: {
+        message_text: `📢 <b>${channel.title}</b> ${verified}\n\n🆔 ID: ${channel.id}\n📂 Category: ${channel.category}\n🌍 Language: ${channel.language ?? "Mixed"}\n⭐ Rating: ${channel.rating_average ?? 0}/5\n👀 Clicks: ${channel.clicks ?? 0}\n\n🔗 ${channel.username ? `@${channel.username}` : "Private Channel"}\n\n🔎 Found via @NexChannelFinderBot`,
+        parse_mode: "HTML",
+      },
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: "🔗 Join Channel", url: channel.username ? `https://t.me/${channel.username}` : `https://t.me/${ctx.env.BOT_USERNAME || 'NexChannelFinderBot'}?start=${channel.id}` }
+          ]
+        ]
+      }
+    };
+  });
+
+  await ctx.telegram.answerInlineQuery(query.id, results, { cache_time: 30 });
 }

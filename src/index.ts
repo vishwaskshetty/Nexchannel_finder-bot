@@ -14,7 +14,7 @@ import { handleChannelDetails, handleRatingPrompt, handleSimilarChannels } from 
 import { handleAnalyticsCallback } from "./handlers/analytics";
 import { handleRecommendationsCallback } from "./handlers/recommendations";
 
-import { handleLeaderboard, postWeeklyLeaderboard, publicPostChannel } from "./handlers/leaderboard";
+import { handleLeaderboard, postWeeklyLeaderboard, publicPostChannel, handleWeeklyLeaderboard, handleSubmitterLeaderboard } from "./handlers/leaderboard";
 import {
   handleMyChannelText,
   handleMyChannels,
@@ -33,6 +33,7 @@ import {
   handleSearchCommand,
   handleSearchHelp,
   isSearchCallbackData,
+  handleInlineQuery,
 } from "./handlers/search";
 import { handleHelp, handleStart, showHome } from "./handlers/start";
 import {
@@ -101,7 +102,7 @@ import {
   checkUserSubscription,
   getForceSubChannel,
   getForceSubLink,
-  parseAdminIds,
+  isAdmin,
   readCommand,
   sendOrEdit,
 } from "./telegram";
@@ -122,26 +123,40 @@ import {
 import { categorySlugFromKey } from "./categoryKeys";
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
-    const url = new URL(request.url);
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    try {
+      const url = new URL(request.url);
 
-    if (request.method === "GET") {
-      if (url.pathname === "/") {
-        return new Response("NexChannel Finder Bot is running ✅", {
-          headers: {
-            "content-type": "text/plain; charset=utf-8",
-          },
-        });
+      if (request.method === "GET") {
+        if (url.pathname === "/") {
+          return new Response("OK", {
+            headers: {
+              "content-type": "text/plain; charset=utf-8",
+            },
+            status: 200,
+          });
+        }
+        return new Response("OK", { status: 200 });
       }
 
-      return new Response("Not found", { status: 404 });
-    }
+      if (request.method !== "POST") {
+        return new Response("OK", { status: 200 });
+      }
 
-    if (request.method === "POST") {
-      return handleWebhookRequest(request, env);
-    }
+      const secretHeader = request.headers.get("x-telegram-bot-api-secret-token");
+      if (env.WEBHOOK_SECRET && !(await secretsEqual(secretHeader ?? "", env.WEBHOOK_SECRET))) {
+        console.error("Unauthorized webhook request");
+        return new Response("OK", { status: 200 });
+      }
 
-    return new Response("Method not allowed", { status: 405 });
+      const update = await request.json() as TelegramUpdate;
+      ctx.waitUntil(handleUpdate(env, update));
+
+      return new Response("OK", { status: 200 });
+    } catch (error) {
+      console.error("Webhook error:", error);
+      return new Response("OK", { status: 200 });
+    }
   },
 
   async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
@@ -150,26 +165,7 @@ export default {
   },
 };
 
-async function handleWebhookRequest(request: Request, env: Env): Promise<Response> {
-  try {
-    console.log("Webhook received");
-
-    const secretHeader = request.headers.get("x-telegram-bot-api-secret-token");
-    if (env.WEBHOOK_SECRET && !(await secretsEqual(secretHeader ?? "", env.WEBHOOK_SECRET))) {
-      return new Response("Unauthorized", { status: 401 });
-    }
-
-    const update = await request.json() as TelegramUpdate;
-    console.log("Update type:", getUpdateType(update));
-
-    await handleUpdate(env, update);
-
-    return jsonResponse({ ok: true });
-  } catch (error) {
-    console.error(error);
-    return jsonResponse({ ok: false });
-  }
-}
+// handleWebhookRequest removed as it is now in fetch
 
 async function postScheduledWeeklyLeaderboard(env: Env): Promise<void> {
   try {
@@ -185,14 +181,27 @@ async function postScheduledWeeklyLeaderboard(env: Env): Promise<void> {
 }
 
 async function handleUpdate(env: Env, update: TelegramUpdate): Promise<void> {
-  if (update.message) {
-    const ctx = createBotContext(env);
-    await handleMessage(ctx, update.message);
-    return;
-  }
+  try {
+    if (update.message) {
+      const ctx = createBotContext(env);
+      await handleMessage(ctx, update.message);
+      return;
+    }
 
-  if (update.callback_query) {
-    await handleCallback(update.callback_query, env);
+    if (update.callback_query) {
+      await handleCallback(update.callback_query, env);
+      return;
+    }
+
+    if (update.inline_query) {
+      const ctx = createBotContext(env);
+      await handleInlineQuery(ctx, update.inline_query);
+      return;
+    }
+
+    console.log("Unknown update:", JSON.stringify(update));
+  } catch (error) {
+    console.error("handleUpdate error:", error);
   }
 }
 
@@ -200,7 +209,9 @@ function createBotContext(env: Env): BotContext {
   return {
     env,
     telegram: new TelegramClient(env.BOT_TOKEN),
-    adminIds: parseAdminIds(env.ADMIN_IDS?.trim() ? env.ADMIN_IDS : env.ADMIN_ID),
+    adminIds: {
+      has: (userId) => isAdmin(userId, env)
+    },
   };
 }
 
@@ -546,6 +557,12 @@ async function handleMessage(ctx: BotContext, message: TelegramMessage): Promise
     case "leaderboard":
       await handleLeaderboard(ctx, message.chat.id);
       break;
+    case "weeklyleaderboard":
+      await handleWeeklyLeaderboard(ctx, message.chat.id, undefined, message);
+      break;
+    case "submitterleaderboard":
+      await handleSubmitterLeaderboard(ctx, message.chat.id, undefined, message);
+      break;
     case "mychannels":
     case "mine":
       await handleMyChannels(ctx, message.chat.id, undefined, message.from?.id ?? 0);
@@ -557,10 +574,9 @@ async function handleMessage(ctx: BotContext, message: TelegramMessage): Promise
       await handleReportCommand(ctx, message, command.args);
       break;
     default:
-      await ctx.telegram.sendMessage(
-        message.chat.id,
-        "I do not know that command yet. Try /help or send a search keyword.",
-      );
+      // Treat any unknown text as a search query
+      await handleSearchCommand(ctx, message, text);
+      break;
   }
 
 }
@@ -820,8 +836,31 @@ async function handleCallbackQuery(ctx: BotContext, query: TelegramCallbackQuery
     return;
   }
 
+  if (data === "weeklyleaderboard" || data === "back:weeklyleaderboard") {
+    await handleWeeklyLeaderboard(ctx, chatId, messageId, query.message);
+    return;
+  }
+
+  if (data === "submitterleaderboard" || data === "back:submitterleaderboard") {
+    await handleSubmitterLeaderboard(ctx, chatId, messageId, query.message);
+    return;
+  }
+
   if (data === "my_channels" || data === "my" || data === "back:my_channels") {
     await handleMyChannels(ctx, chatId, messageId, userId);
+    return;
+  }
+
+  if (data === "bot_language" || data === "back:bot_language") {
+    const { handleBotLanguage } = await import("./handlers/start");
+    await handleBotLanguage(ctx, chatId, messageId, query.message);
+    return;
+  }
+
+  if (data.startsWith("set_ui_lang:")) {
+    const lang = data.split(":")[1];
+    const { handleSetBotLanguage } = await import("./handlers/start");
+    await handleSetBotLanguage(ctx, chatId, userId, lang, messageId, query.message);
     return;
   }
 

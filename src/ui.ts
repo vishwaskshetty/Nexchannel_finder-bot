@@ -25,6 +25,8 @@ export const TEXT = {
     botsZone: "🤖 Bots Zone",
     earningBots: "💰 Earning Bots",
     help: "ℹ️ Help",
+    weeklyLeaderboard: "🏆 Weekly Leaderboard",
+    submitterLeaderboard: "🎁 Submitter Leaderboard",
   },
   Hindi: {
     mainMenu: "मुख्य मेनू",
@@ -39,6 +41,8 @@ export const TEXT = {
     botsZone: "🤖 बॉट्स ज़ोन",
     earningBots: "💰 अर्निंग बॉट्स",
     help: "ℹ️ मदद",
+    weeklyLeaderboard: "🏆 Weekly Leaderboard",
+    submitterLeaderboard: "🎁 Submitter Leaderboard",
   },
   Kannada: {
     mainMenu: "ಮುಖ್ಯ ಮೆನು",
@@ -53,6 +57,8 @@ export const TEXT = {
     botsZone: "🤖 ಬಾಟ್ಸ್ ವಲಯ",
     earningBots: "💰 ಗಳಿಸುವ ಬಾಟ್‌ಗಳು",
     help: "ℹ️ ಸಹಾಯ",
+    weeklyLeaderboard: "🏆 Weekly Leaderboard",
+    submitterLeaderboard: "🎁 Submitter Leaderboard",
   },
   Tamil: {
     mainMenu: "முக்கிய மெனு",
@@ -67,6 +73,8 @@ export const TEXT = {
     botsZone: "🤖 பாட்ஸ் மண்டலம்",
     earningBots: "💰 வருமானம் தரும் பாட்ஸ்",
     help: "ℹ️ உதவி",
+    weeklyLeaderboard: "🏆 Weekly Leaderboard",
+    submitterLeaderboard: "🎁 Submitter Leaderboard",
   },
   Telugu: {
     mainMenu: "ప్రధాన మెనూ",
@@ -81,6 +89,8 @@ export const TEXT = {
     botsZone: "🤖 బాట్స్ జోన్",
     earningBots: "💰 ఎర్నింగ్ బాట్స్",
     help: "ℹ️ సహాయం",
+    weeklyLeaderboard: "🏆 Weekly Leaderboard",
+    submitterLeaderboard: "🎁 Submitter Leaderboard",
   },
   Malayalam: {
     mainMenu: "പ്രധാന മെനു",
@@ -95,7 +105,20 @@ export const TEXT = {
     botsZone: "🤖 ബോട്ടുകൾ",
     earningBots: "💰 വരുമാന ബോട്ടുകൾ",
     help: "ℹ️ സഹായം",
-  }
+    weeklyLeaderboard: "🏆 Weekly Leaderboard",
+    submitterLeaderboard: "🎁 Submitter Leaderboard",
+  },
+  Marathi: { mainMenu: "Main Menu", search: "🔍 Search Channels", categories: "📂 Browse Categories", languageFilter: "🌐 Channel Language Filter", trending: "🔥 Trending Channels", recommendations: "🧠 Smart Recommendations", saved: "💾 My Saved Channels", submit: "➕ Submit Channel", botLanguage: "🌍 Bot Language", botsZone: "🤖 Bots Zone", earningBots: "💰 Earning Bots", help: "ℹ️ Help", weeklyLeaderboard: "🏆 Weekly Leaderboard", submitterLeaderboard: "🎁 Submitter Leaderboard" },
+  Gujarati: { mainMenu: "Main Menu", search: "🔍 Search Channels", categories: "📂 Browse Categories", languageFilter: "🌐 Channel Language Filter", trending: "🔥 Trending Channels", recommendations: "🧠 Smart Recommendations", saved: "💾 My Saved Channels", submit: "➕ Submit Channel", botLanguage: "🌍 Bot Language", botsZone: "🤖 Bots Zone", earningBots: "💰 Earning Bots", help: "ℹ️ Help", weeklyLeaderboard: "🏆 Weekly Leaderboard", submitterLeaderboard: "🎁 Submitter Leaderboard" },
+  Bengali: { mainMenu: "Main Menu", search: "🔍 Search Channels", categories: "📂 Browse Categories", languageFilter: "🌐 Channel Language Filter", trending: "🔥 Trending Channels", recommendations: "🧠 Smart Recommendations", saved: "💾 My Saved Channels", submit: "➕ Submit Channel", botLanguage: "🌍 Bot Language", botsZone: "🤖 Bots Zone", earningBots: "💰 Earning Bots", help: "ℹ️ Help", weeklyLeaderboard: "🏆 Weekly Leaderboard", submitterLeaderboard: "🎁 Submitter Leaderboard" },
+  Urdu: { mainMenu: "Main Menu", search: "🔍 Search Channels", categories: "📂 Browse Categories", languageFilter: "🌐 Channel Language Filter", trending: "🔥 Trending Channels", recommendations: "🧠 Smart Recommendations", saved: "💾 My Saved Channels", submit: "➕ Submit Channel", botLanguage: "🌍 Bot Language", botsZone: "🤖 Bots Zone", earningBots: "💰 Earning Bots", help: "ℹ️ Help", weeklyLeaderboard: "🏆 Weekly Leaderboard", submitterLeaderboard: "🎁 Submitter Leaderboard" },
+  Arabic: { mainMenu: "Main Menu", search: "🔍 Search Channels", categories: "📂 Browse Categories", languageFilter: "🌐 Channel Language Filter", trending: "🔥 Trending Channels", recommendations: "🧠 Smart Recommendations", saved: "💾 My Saved Channels", submit: "➕ Submit Channel", botLanguage: "🌍 Bot Language", botsZone: "🤖 Bots Zone", earningBots: "💰 Earning Bots", help: "ℹ️ Help", weeklyLeaderboard: "🏆 Weekly Leaderboard", submitterLeaderboard: "🎁 Submitter Leaderboard" },
+  Spanish: { mainMenu: "Main Menu", search: "🔍 Search Channels", categories: "📂 Browse Categories", languageFilter: "🌐 Channel Language Filter", trending: "🔥 Trending Channels", recommendations: "🧠 Smart Recommendations", saved: "💾 My Saved Channels", submit: "➕ Submit Channel", botLanguage: "🌍 Bot Language", botsZone: "🤖 Bots Zone", earningBots: "💰 Earning Bots", help: "ℹ️ Help", weeklyLeaderboard: "🏆 Weekly Leaderboard", submitterLeaderboard: "🎁 Submitter Leaderboard" },
+  French: { mainMenu: "Main Menu", search: "🔍 Search Channels", categories: "📂 Browse Categories", languageFilter: "🌐 Channel Language Filter", trending: "🔥 Trending Channels", recommendations: "🧠 Smart Recommendations", saved: "💾 My Saved Channels", submit: "➕ Submit Channel", botLanguage: "🌍 Bot Language", botsZone: "🤖 Bots Zone", earningBots: "💰 Earning Bots", help: "ℹ️ Help", weeklyLeaderboard: "🏆 Weekly Leaderboard", submitterLeaderboard: "🎁 Submitter Leaderboard" },
+  German: { mainMenu: "Main Menu", search: "🔍 Search Channels", categories: "📂 Browse Categories", languageFilter: "🌐 Channel Language Filter", trending: "🔥 Trending Channels", recommendations: "🧠 Smart Recommendations", saved: "💾 My Saved Channels", submit: "➕ Submit Channel", botLanguage: "🌍 Bot Language", botsZone: "🤖 Bots Zone", earningBots: "💰 Earning Bots", help: "ℹ️ Help", weeklyLeaderboard: "🏆 Weekly Leaderboard", submitterLeaderboard: "🎁 Submitter Leaderboard" },
+  Indonesian: { mainMenu: "Main Menu", search: "🔍 Search Channels", categories: "📂 Browse Categories", languageFilter: "🌐 Channel Language Filter", trending: "🔥 Trending Channels", recommendations: "🧠 Smart Recommendations", saved: "💾 My Saved Channels", submit: "➕ Submit Channel", botLanguage: "🌍 Bot Language", botsZone: "🤖 Bots Zone", earningBots: "💰 Earning Bots", help: "ℹ️ Help", weeklyLeaderboard: "🏆 Weekly Leaderboard", submitterLeaderboard: "🎁 Submitter Leaderboard" },
+  Turkish: { mainMenu: "Main Menu", search: "🔍 Search Channels", categories: "📂 Browse Categories", languageFilter: "🌐 Channel Language Filter", trending: "🔥 Trending Channels", recommendations: "🧠 Smart Recommendations", saved: "💾 My Saved Channels", submit: "➕ Submit Channel", botLanguage: "🌍 Bot Language", botsZone: "🤖 Bots Zone", earningBots: "💰 Earning Bots", help: "ℹ️ Help", weeklyLeaderboard: "🏆 Weekly Leaderboard", submitterLeaderboard: "🎁 Submitter Leaderboard" },
+  Russian: { mainMenu: "Main Menu", search: "🔍 Search Channels", categories: "📂 Browse Categories", languageFilter: "🌐 Channel Language Filter", trending: "🔥 Trending Channels", recommendations: "🧠 Smart Recommendations", saved: "💾 My Saved Channels", submit: "➕ Submit Channel", botLanguage: "🌍 Bot Language", botsZone: "🤖 Bots Zone", earningBots: "💰 Earning Bots", help: "ℹ️ Help", weeklyLeaderboard: "🏆 Weekly Leaderboard", submitterLeaderboard: "🎁 Submitter Leaderboard" }
 } as const;
 
 type KeyboardRows = TelegramInlineKeyboardMarkup["inline_keyboard"];
@@ -179,6 +202,8 @@ export const HELP_TEXT = [
   "/search - Search channels",
   "/submit - Submit your channel",
   "/mysaved - View saved channels",
+  "/weeklyleaderboard - Top channels of the week",
+  "/submitterleaderboard - Top submitters",
   "",
   "<b>Admin Commands</b>",
   "/addchannel - Add one channel",
@@ -259,6 +284,10 @@ export function mainMenuKeyboard(isAdmin = false, uiLanguage: string = 'English'
     ],
     [
       { text: t.trending, callback_data: "top" },
+      { text: t.weeklyLeaderboard, callback_data: "weeklyleaderboard" },
+    ],
+    [
+      { text: t.submitterLeaderboard, callback_data: "submitterleaderboard" },
       { text: t.recommendations, callback_data: "recommend:user" },
     ],
     [
@@ -279,6 +308,24 @@ export function mainMenuKeyboard(isAdmin = false, uiLanguage: string = 'English'
     rows.push([{ text: "🛠 Admin Panel", callback_data: "admin" }]);
   }
 
+  return { inline_keyboard: rows };
+}
+
+export function botLanguageKeyboard(): TelegramInlineKeyboardMarkup {
+  const languages = Object.keys(TEXT);
+  const rows: KeyboardRows = [];
+  
+  for (let i = 0; i < languages.length; i += 2) {
+    const row = [
+      { text: languages[i], callback_data: `set_ui_lang:${languages[i]}` }
+    ];
+    if (languages[i + 1]) {
+      row.push({ text: languages[i + 1], callback_data: `set_ui_lang:${languages[i + 1]}` });
+    }
+    rows.push(row);
+  }
+
+  rows.push([{ text: "⬅️ Back", callback_data: "home" }]);
   return { inline_keyboard: rows };
 }
 
@@ -510,7 +557,7 @@ export function channelActionKeyboard(
   const homeCallback = options.homeCallback ?? "home";
 
   if (joinLink) {
-    rows.push([{ text: "🔗 Open Channel", callback_data: `open_channel:${channel.id}` }]);
+    rows.push([{ text: "🔗 Open Channel", url: joinLink }]);
   }
 
   rows.push(
@@ -834,7 +881,7 @@ export function weeklyLeaderboardPostText(channels: Channel[]): string {
 }
 
 export function formatWeeklyLeaderboard(channels: Channel[]): string {
-  const approvedChannels = channels.filter((channel) => channel.status === "approved").slice(0, 3);
+  const approvedChannels = channels.filter((channel) => channel.status === "approved").slice(0, 10);
 
   return [
     "🏆 𝗡𝗲𝘅𝗖𝗵𝗮𝗻𝗻𝗲𝗹 𝗪𝗲𝗲𝗸𝗹𝘆 𝗟𝗲𝗮𝗱𝗲𝗿𝗯𝗼𝗮𝗿𝗱",
@@ -1558,8 +1605,8 @@ export function openReportsKeyboard(reports: Report[]): TelegramInlineKeyboardMa
   };
 }
 
-export function mainMenu(isAdmin: boolean): TelegramInlineKeyboardMarkup {
-  return mainMenuKeyboard(isAdmin);
+export function mainMenu(isAdmin: boolean, uiLanguage?: string): TelegramInlineKeyboardMarkup {
+  return mainMenuKeyboard(isAdmin, uiLanguage);
 }
 
 export function forceSubscribeKeyboard(link?: string): TelegramInlineKeyboardMarkup {
@@ -1680,21 +1727,32 @@ function leaderboardChannelLine(channel: Channel, rank: number): string {
   ].join("\n");
 }
 
-function weeklyPostChannelBlock(channel: Channel, rank: number): string {
+function weeklyPostChannelBlock(channel: Channel & { saves?: number, trending_score?: number }, rank: number): string {
   const medals = ["🥇", "🥈", "🥉"];
-  const weeklyClicks = channel.weekly_clicks ?? channel.join_clicks ?? channel.clicks ?? 0;
-  const rating = channel.weekly_rating_average && channel.weekly_rating_average > 0
-    ? channel.weekly_rating_average
-    : channel.rating_average ?? 0;
-  const ratingCount = channel.weekly_rating_count && channel.weekly_rating_count > 0
-    ? channel.weekly_rating_count
-    : channel.rating_count ?? 0;
+  const score = channel.trending_score ?? 0;
+  const saves = channel.saves ?? 0;
+  const rating = channel.rating_average ?? 0;
   return [
-    `${medals[rank - 1] ?? "🏆"} ${unicodeBold(channel.title)}${verifiedBadge(channel)}`,
+    `${medals[rank - 1] ?? "🏅"} ${unicodeBold(channel.title)} (${channelDisplayLabel(channel)})`,
     `🆔 ID: ${channel.id}`,
     `📂 ${categoryLabel(channel)} • 🌍 ${channel.language ?? "Mixed"}`,
-    `⭐ ${formatRating(rating)} / 5 • 👥 ${formatNumber(ratingCount)} ratings`,
-    `👀 ${formatNumber(weeklyClicks)} clicks this week`,
+    `💾 Saves: ${formatNumber(saves)} • ⭐ Rating: ${formatRating(rating)}/5`,
+    `🔥 Trending Score: ${formatNumber(score)}`,
+  ].join("\n");
+}
+
+export function submitterLeaderboardText(submitters: any[]): string {
+  const medals = ["🥇", "🥈", "🥉"];
+  return [
+    "🎁 𝗧𝗼𝗽 𝗖𝗵𝗮𝗻𝗻𝗲𝗹 𝗦𝘂𝗯𝗺𝗶𝘁𝘁𝗲𝗿𝘀",
+    "",
+    "Thank you to our top contributors!",
+    "",
+    ...submitters.map((user, index) => {
+      const rank = index + 1;
+      const medal = medals[rank - 1] ?? "🏅";
+      return `${medal} User ID: ${user.submitted_by} • ${user.approved_count} channels approved`;
+    }),
   ].join("\n");
 }
 

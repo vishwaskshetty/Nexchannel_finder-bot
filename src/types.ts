@@ -68,10 +68,18 @@ export interface TelegramCallbackQuery {
   data?: string;
 }
 
+export interface TelegramInlineQuery {
+  id: string;
+  from: TelegramUser;
+  query: string;
+  offset: string;
+}
+
 export interface TelegramUpdate {
   update_id: number;
   message?: TelegramMessage;
   callback_query?: TelegramCallbackQuery;
+  inline_query?: TelegramInlineQuery;
 }
 
 export interface TelegramInlineKeyboardButton {
@@ -100,7 +108,7 @@ export interface TelegramChatMember {
 export interface BotContext {
   env: Env;
   telegram: TelegramClient;
-  adminIds: Set<number>;
+  adminIds: { has: (userId: number | string | undefined) => boolean };
 }
 
 export interface Category {
@@ -353,7 +361,7 @@ export interface YoutubeVerification {
   updated_at: string;
 }
 
-export type UILanguage = 'English' | 'Hindi' | 'Kannada' | 'Tamil' | 'Telugu' | 'Malayalam';
+export type UILanguage = 'English' | 'Hindi' | 'Kannada' | 'Tamil' | 'Telugu' | 'Malayalam' | 'Marathi' | 'Gujarati' | 'Bengali' | 'Urdu' | 'Arabic' | 'Spanish' | 'French' | 'German' | 'Indonesian' | 'Turkish' | 'Russian';
 
 export interface Translations {
   mainMenu: string;

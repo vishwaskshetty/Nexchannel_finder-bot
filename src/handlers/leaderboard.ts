@@ -7,8 +7,9 @@ import {
   leaderboardKeyboard,
   leaderboardText,
   weeklyLeaderboardPostKeyboard,
+  submitterLeaderboardText,
 } from "../ui";
-import { getBotSetting } from "../db";
+import { getBotSetting, listWeeklyLeaderboardScore, listSubmitterLeaderboard } from "../db";
 
 export async function handleLeaderboard(
   ctx: BotContext,
@@ -33,6 +34,38 @@ export async function handleLeaderboard(
     leaderboardText(sections),
     leaderboardKeyboard(buttons),
     "leaderboard",
+  );
+}
+
+export async function handleWeeklyLeaderboard(ctx: BotContext, chatId: number, messageId?: number, message?: TelegramMessage): Promise<void> {
+  const channels = await listWeeklyLeaderboardScore(ctx.env, 10);
+  const text = formatWeeklyLeaderboard(channels);
+  
+  const { editOrSendPage } = await import("./banners");
+  await editOrSendPage(
+    ctx,
+    chatId,
+    messageId,
+    message,
+    text,
+    { inline_keyboard: [[{ text: "⬅️ Back", callback_data: "home" }]] },
+    "leaderboard"
+  );
+}
+
+export async function handleSubmitterLeaderboard(ctx: BotContext, chatId: number, messageId?: number, message?: TelegramMessage): Promise<void> {
+  const users = await listSubmitterLeaderboard(ctx.env, 10);
+  const text = submitterLeaderboardText(users);
+
+  const { editOrSendPage } = await import("./banners");
+  await editOrSendPage(
+    ctx,
+    chatId,
+    messageId,
+    message,
+    text,
+    { inline_keyboard: [[{ text: "⬅️ Back", callback_data: "home" }]] },
+    "leaderboard"
   );
 }
 

@@ -9,6 +9,30 @@ import type {
   TelegramUser,
 } from "./types";
 
+export async function telegramApi(env: Env, method: string, payload: Record<string, unknown> = {}): Promise<any> {
+  const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/${method}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+
+  const data = await res.json() as any;
+
+  if (!data.ok) {
+    console.error("Telegram API error:", method, data);
+  }
+
+  return data;
+}
+
+export async function getChatInfo(env: Env, username: string): Promise<any> {
+  const data = await telegramApi(env, "getChat", { chat_id: username });
+  if (!data.ok) {
+    return null;
+  }
+  return data.result;
+}
+
 export interface MessageOptions {
   reply_markup?: TelegramInlineKeyboardMarkup;
   disable_web_page_preview?: boolean;
@@ -131,6 +155,19 @@ export class TelegramClient {
     }
     return response;
   }
+
+  async answerInlineQuery(
+    inlineQueryId: string,
+    results: any[],
+    options: { cache_time?: number; is_personal?: boolean; next_offset?: string } = {}
+  ): Promise<TelegramApiResponse<true>> {
+    return this.call<true>("answerInlineQuery", {
+      inline_query_id: inlineQueryId,
+      results,
+      ...options
+    });
+  }
+
 
   hasAnsweredCallbackQuery(callbackQueryId: string): boolean {
     return this.answeredCallbackIds.has(callbackQueryId);
@@ -275,13 +312,14 @@ export async function safeEditOrSend(
   });
 }
 
-export function parseAdminIds(rawValue = ""): Set<number> {
-  const ids = rawValue
+export function isAdmin(userId: number | string | undefined, env: Env): boolean {
+  if (!userId) return false;
+  const admins = String(env.ADMIN_IDS || "")
     .split(",")
-    .map((value) => Number(value.trim()))
-    .filter((value) => Number.isInteger(value) && value > 0);
+    .map(id => id.trim())
+    .filter(Boolean);
 
-  return new Set(ids);
+  return admins.includes(String(userId));
 }
 
 export function readCommand(text: string): { name: string; args: string } | null {

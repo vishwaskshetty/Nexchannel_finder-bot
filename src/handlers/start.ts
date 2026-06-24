@@ -1,4 +1,4 @@
-import { upsertUser } from "../db";
+import { upsertUser, getUser } from "../db";
 import { checkUserSubscription, getForceSubLink, sendOrEdit } from "../telegram";
 import type { BotContext, TelegramMessage } from "../types";
 import {
@@ -14,7 +14,12 @@ import { editOrSendPage } from "./banners";
 
 export async function handleStart(ctx: BotContext, message: TelegramMessage): Promise<void> {
   if (message.from) {
-    await upsertUser(ctx.env, message.from);
+    try {
+      await upsertUser(ctx.env, message.from);
+    } catch (e) {
+      console.error("Failed to upsert user on /start:", e);
+    }
+
 
     if (startParameter(message.text) === "submit") {
       const subscription = ctx.adminIds.has(message.from.id)
@@ -54,13 +59,16 @@ export async function showHome(
     return;
   }
 
+  const user = await getUser(ctx.env, userId);
+  const uiLanguage = user?.ui_language ?? "English";
+
   await editOrSendPage(
     ctx,
     chatId,
     messageId,
     message,
     HOME_TEXT,
-    mainMenu(ctx.adminIds.has(userId)),
+    mainMenu(ctx.adminIds.has(userId), uiLanguage),
     "welcome",
   );
 }
@@ -76,7 +84,19 @@ export async function handleHelp(
   });
 }
 
+export async function handleBotLanguage(ctx: BotContext, chatId: number, messageId?: number, message?: TelegramMessage): Promise<void> {
+  const { botLanguageKeyboard } = await import("../ui");
+  await sendOrEdit(ctx.telegram, chatId, messageId, "🌍 Select your preferred Bot UI Language:", {
+    reply_markup: botLanguageKeyboard(),
+  });
+}
 
+export async function handleSetBotLanguage(ctx: BotContext, chatId: number, userId: number, language: string, messageId?: number, message?: TelegramMessage): Promise<void> {
+  const { updateUserUiLanguage } = await import("../db");
+  await updateUserUiLanguage(ctx.env, userId, language);
+  await ctx.telegram.answerCallbackQuery(message?.text || "", "✅ Language updated!");
+  await showHome(ctx, chatId, userId, messageId, message);
+}
 function startParameter(text?: string): string {
   const match = /^\/start(?:@\w+)?(?:\s+([^\s]+))?/i.exec(text?.trim() ?? "");
   return match?.[1]?.toLowerCase() ?? "";

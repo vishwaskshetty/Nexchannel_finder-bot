@@ -12,6 +12,7 @@ import { CATEGORIES, mapExternalCategory } from "../config/categories";
 import { parseLanguage, LANGUAGES } from "../config/languages";
 import { checkChannelSafety } from "../utils/safety";
 import type { BotContext, TelegramMessage } from "../types";
+import { getChatInfo } from "../telegram";
 
 function generateShortId(): string {
   return Math.random().toString(36).substring(2, 9);
@@ -503,9 +504,9 @@ export async function processAddChannelLine(
     return { status: "duplicate", username: rawUsername };
   }
 
-  // Verify channel exists on Telegram via getChat
-  const chatData = await ctx.telegram.getChat(rawUsername);
-  if (!chatData.ok || !chatData.result) {
+  // Verify channel exists on Telegram via getChatInfo
+  const chatData = await getChatInfo(ctx.env, rawUsername);
+  if (!chatData) {
     return {
       status: "invalid",
       username: rawUsername,
@@ -513,7 +514,7 @@ export async function processAddChannelLine(
     };
   }
 
-  const telegramTitle = chatData.result.title ?? usernameOnly.replace(/_/g, ' ');
+  const telegramTitle = chatData.title ?? usernameOnly.replace(/_/g, ' ');
 
   // Parse fields
   const categoryRaw = parts[1] || "Other";
@@ -542,6 +543,8 @@ export async function processAddChannelLine(
     tags,
     admin_username: "",
     status: "approved",
+    verified: 1,
+    ownership_verified: 1,
     source_name: "admin_add",
     source_url: "",
     source_rank: 0,

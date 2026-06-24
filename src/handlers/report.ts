@@ -173,8 +173,11 @@ async function notifyAdmins(
     `📋 Reason: ${reason}`,
   ].join("\n");
 
+  const adminIdsStr = ctx.env.ADMIN_IDS?.trim() ? ctx.env.ADMIN_IDS : ctx.env.ADMIN_ID;
+  const adminIds = adminIdsStr ? adminIdsStr.split(",").map(id => Number(id.trim())).filter(id => !isNaN(id)) : [];
+
   await Promise.all(
-    [...ctx.adminIds].map(async (adminId) => {
+    adminIds.map(async (adminId) => {
       try {
         await ctx.telegram.sendMessage(adminId, text);
       } catch (error) {

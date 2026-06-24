@@ -571,6 +571,38 @@ export async function listWeeklyLeaderboard(
   return result.results ?? [];
 }
 
+export async function listWeeklyLeaderboardScore(env: Env, limit = 10): Promise<any[]> {
+  const result = await env.DB.prepare(`
+    SELECT
+      c.*,
+      COUNT(DISTINCT s.telegram_id) AS saves,
+      ((c.clicks * 3) + (COUNT(DISTINCT s.telegram_id) * 5) + (c.rating * 10) + c.views) AS trending_score
+    FROM channels c
+    LEFT JOIN saved_channels s ON s.channel_id = c.id
+    WHERE c.status = 'approved'
+      AND (c.is_scam IS NULL OR c.is_scam = 0)
+    GROUP BY c.id
+    ORDER BY trending_score DESC
+    LIMIT ?
+  `).bind(limit).all();
+  return result.results ?? [];
+}
+
+export async function listSubmitterLeaderboard(env: Env, limit = 10): Promise<any[]> {
+  const result = await env.DB.prepare(`
+    SELECT
+      submitted_by,
+      COUNT(*) AS approved_count
+    FROM channels
+    WHERE status = 'approved'
+      AND submitted_by IS NOT NULL
+    GROUP BY submitted_by
+    ORDER BY approved_count DESC
+    LIMIT ?
+  `).bind(limit).all();
+  return result.results ?? [];
+}
+
 export async function listLeaderboardFallback(env: Env, limit = 3): Promise<Channel[]> {
   return listTopChannels(env, limit);
 }
@@ -1752,6 +1784,8 @@ export interface ImportChannelData {
   source_rank: number;
   subscribers_text: string;
   import_batch_id: string;
+  verified?: number;
+  ownership_verified?: number;
 }
 
 export async function importChannel(
@@ -1765,12 +1799,13 @@ export async function importChannel(
            owner_telegram_id, channel_type, channel_username, channel_link, invite_link,
            title, description, category, language, tags, admin_username, status,
            source_name, source_url, source_rank, subscribers_text, import_batch_id,
-           last_imported_at, is_public_listing, featured, verified
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, 0, 0, 0)`
+         last_imported_at, is_public_listing, featured, verified, ownership_verified
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, 0, 0, ?, ?)`
       ).bind(
         data.owner_telegram_id, data.channel_type, data.channel_username, data.channel_link, data.invite_link,
         data.title, data.description, data.category, data.language, data.tags, data.admin_username, data.status,
-        data.source_name, data.source_url, data.source_rank, data.subscribers_text, data.import_batch_id
+        data.source_name, data.source_url, data.source_rank, data.subscribers_text, data.import_batch_id,
+        data.verified ?? 0, data.ownership_verified ?? 0
       ).run();
       return true; // Inserted
     } catch (e) {
@@ -1788,11 +1823,12 @@ export async function importChannel(
     await env.DB.prepare(
       `UPDATE channels SET
          title = ?, category = ?, language = ?, subscribers_text = ?,
-         source_rank = ?, last_imported_at = CURRENT_TIMESTAMP, import_batch_id = ?
+         source_rank = ?, last_imported_at = CURRENT_TIMESTAMP, import_batch_id = ?,
+         verified = COALESCE(?, verified), ownership_verified = COALESCE(?, ownership_verified)
        WHERE id = ?`
     ).bind(
       data.title, data.category, data.language, data.subscribers_text,
-      data.source_rank, data.import_batch_id, existing.id
+      data.source_rank, data.import_batch_id, data.verified, data.ownership_verified, existing.id
     ).run();
     return false; // Updated
   } else {
@@ -1801,12 +1837,13 @@ export async function importChannel(
          owner_telegram_id, channel_type, channel_username, channel_link, invite_link,
          title, description, category, language, tags, admin_username, status,
          source_name, source_url, source_rank, subscribers_text, import_batch_id,
-         last_imported_at, is_public_listing, featured, verified
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, 1, 0, 0)`
+         last_imported_at, is_public_listing, featured, verified, ownership_verified
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, 1, 0, ?, ?)`
     ).bind(
       data.owner_telegram_id, data.channel_type, data.channel_username, data.channel_link, data.invite_link,
       data.title, data.description, data.category, data.language, data.tags, data.admin_username, data.status,
-      data.source_name, data.source_url, data.source_rank, data.subscribers_text, data.import_batch_id
+      data.source_name, data.source_url, data.source_rank, data.subscribers_text, data.import_batch_id,
+      data.verified ?? 0, data.ownership_verified ?? 0
     ).run();
     return true; // Inserted
   }
