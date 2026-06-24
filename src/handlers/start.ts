@@ -72,8 +72,10 @@ export async function handleHelp(
 ): Promise<void> {
   await sendOrEdit(ctx.telegram, chatId, messageId, HELP_TEXT, {
     reply_markup: backToMenuKeyboard(),
+    parse_mode: "HTML",
   });
 }
+
 
 function startParameter(text?: string): string {
   const match = /^\/start(?:@\w+)?(?:\s+([^\s]+))?/i.exec(text?.trim() ?? "");

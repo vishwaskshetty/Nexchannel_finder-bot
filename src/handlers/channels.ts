@@ -1,9 +1,11 @@
-import { getChannel, incrementChannelClicks, isChannelSaved } from "../db";
+import { getChannel, incrementChannelClicks, isChannelSaved, listSimilarChannels } from "../db";
 import { sendOrEdit } from "../telegram";
 import type { BotContext } from "../types";
 import {
   backToMenuKeyboard,
   channelActionKeyboard,
+  channelResultsKeyboard,
+  channelResultsText,
   formatChannelDetails,
   ratingKeyboard,
   ratingText,
@@ -39,7 +41,6 @@ export async function handleChannelDetails(
         console.log("Click tracked for channel:", channelId, "user:", userId);
       } catch (clickError) {
         console.error("Error tracking click for channel:", channelId, clickError);
-        // Non-fatal: continue showing channel details even if click tracking fails
       }
     }
 
@@ -91,3 +92,51 @@ export async function handleRatingPrompt(
     });
   }
 }
+
+export async function handleSimilarChannels(
+  ctx: BotContext,
+  chatId: number,
+  messageId: number | undefined,
+  channelId: number,
+): Promise<void> {
+  console.log("Channel action: similar_channels", channelId);
+
+  try {
+    const channel = await getChannel(ctx.env, channelId);
+
+    if (!channel) {
+      await sendOrEdit(ctx.telegram, chatId, messageId, "❌ Channel not found.", {
+        reply_markup: backToMenuKeyboard(),
+        disable_web_page_preview: true,
+      });
+      return;
+    }
+
+    const category = channel.category ?? channel.category_slug ?? "other";
+    const language = channel.language ?? "Mixed";
+
+    const similar = await listSimilarChannels(ctx.env, channelId, category, language, 5);
+
+    const title = similar.length > 0
+      ? `🔎 Similar to "${channel.title}"`
+      : `🔎 Similar Channels`;
+
+    await sendOrEdit(
+      ctx.telegram,
+      chatId,
+      messageId,
+      channelResultsText(title, similar),
+      {
+        reply_markup: channelResultsKeyboard(similar, `channel:${channelId}`),
+        disable_web_page_preview: true,
+      },
+    );
+  } catch (error) {
+    console.error("Error in handleSimilarChannels:", error);
+    await sendOrEdit(ctx.telegram, chatId, messageId, "❌ Something went wrong. Please try again.", {
+      reply_markup: backToMenuKeyboard(),
+      disable_web_page_preview: true,
+    });
+  }
+}
+

@@ -70,19 +70,32 @@ export const HOME_TEXT = [
 
 
 export const HELP_TEXT = [
-  "ℹ️ 𝗛𝗲𝗹𝗽 𝗖𝗲𝗻𝘁𝗲𝗿",
+  "<b>ℹ️ NexChannel Finder Help</b>",
   "",
-  "Browse, search, save, rate, or report channels from the menu.",
+  "Use this bot to discover Telegram channels by category, language, trending, and search.",
   "",
   "━━━━━━━━━━━━━━",
   "",
-  "⌨️ 𝗖𝗼𝗺𝗺𝗮𝗻𝗱𝘀",
-  "/start",
-  "/categories",
-  "/search keyword",
-  "/submit",
-  "/report channel_id reason",
+  "<b>User Commands:</b>",
+  "/start — Open main menu",
+  "/help — Show this help",
+  "/search — Search channels",
+  "/submit — Submit your channel",
+  "/saved — View saved channels",
+  "",
+  "━━━━━━━━━━━━━━",
+  "",
+  "<b>Admin Commands:</b>",
+  "/addchannel — Add one channel",
+  "/bulkadd — Add many channels",
+  "/pending — View pending channels",
+  "/stats — View bot stats",
+  "/export — Export channel list",
+  "/postleaderboard — Post leaderboard",
+  "/importstats — View import stats",
+  "/banners — View banner status",
 ].join("\n");
+
 
 export const FORCE_SUB_TEXT = [
   "🔒 Join Required",
@@ -142,26 +155,23 @@ export const PRIVATE_CHANNEL_RULE_TEXT = [
 export function mainMenuKeyboard(isAdmin = false): TelegramInlineKeyboardMarkup {
   const rows: KeyboardRows = [
     [
-      { text: "🔥 Top Channels", callback_data: "top" },
-      { text: "⭐ Featured", callback_data: "featured" },
+      { text: "🔍 Search Channels", callback_data: "search" },
+      { text: "📂 Browse Categories", callback_data: "categories" },
     ],
     [
-      { text: "📂 Categories", callback_data: "categories" },
-      { text: "🆕 New", callback_data: "new" },
+      { text: "🌐 Language Filter", callback_data: "languages_page" },
+      { text: "🔥 Trending Channels", callback_data: "top" },
     ],
     [
-      { text: "🔎 Search", callback_data: "search" },
-      { text: "📢 Submit", callback_data: "submit" },
+      { text: "🏆 Weekly Leaderboard", callback_data: "leaderboard" },
+      { text: "💾 My Saved Channels", callback_data: "saved" },
     ],
     [
-      { text: "💾 Saved", callback_data: "saved" },
-      { text: "🏆 Leaderboard", callback_data: "leaderboard" },
+      { text: "➕ Submit Channel", callback_data: "submit" },
+      { text: "🤖 Bots Zone", callback_data: "bots_section" },
     ],
     [
-      { text: "🤖 Bots", callback_data: "bots_section" },
-    ],
-    [
-      { text: "📊 My Channels", callback_data: "my_channels" },
+      { text: "💰 Earning Bots", callback_data: "bots_earning" },
       { text: "ℹ️ Help", callback_data: "help" },
     ],
   ];
@@ -172,6 +182,7 @@ export function mainMenuKeyboard(isAdmin = false): TelegramInlineKeyboardMarkup 
 
   return { inline_keyboard: rows };
 }
+
 
 export function backHomeKeyboard(backCallback = "home", homeCallback = "home"): TelegramInlineKeyboardMarkup {
   return {
@@ -412,8 +423,9 @@ export function channelActionKeyboard(
 
   // Join button: uses channel_link for public, invite_link for private
   if (joinLink) {
-    rows.push([{ text: "📥 Join Channel", url: joinLink }]);
+    rows.push([{ text: "🔗 Open Channel", url: joinLink }]);
   }
+
 
   rows.push(
     [
@@ -423,12 +435,16 @@ export function channelActionKeyboard(
         callback_data: options.isSaved ? `unsave:${channel.id}` : `save:${channel.id}`,
       },
     ],
-    [{ text: "🚨 Report", callback_data: `report:${channel.id}` }],
+    [
+      { text: "🔎 Similar", callback_data: `similar:${channel.id}` },
+      { text: "🚨 Report", callback_data: `report:${channel.id}` },
+    ],
     backHomeRow(backCallback, homeCallback),
   );
 
   return { inline_keyboard: rows };
 }
+
 
 export function channelDetailsKeyboard(
   channel: Channel,

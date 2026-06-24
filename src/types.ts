@@ -275,7 +275,9 @@ export type AdminStateMode =
   | "import_csv_wait"
   | "add_public_wait"
   | "add_private_wait"
-  | "banner_wait";
+  | "banner_wait"
+  | "bulkadd_wait"
+  | "addchannel_wait";
 
 export interface AdminState {
   telegram_id: number;

@@ -1809,3 +1809,140 @@ export async function setBotSetting(env: Env, key: string, value: string): Promi
     .run();
 }
 
+// ─── Similar Channels ────────────────────────────────────────────────────────
+
+export async function listSimilarChannels(
+  env: Env,
+  channelId: number,
+  category: string,
+  language: string,
+  limit = 5,
+): Promise<Channel[]> {
+  const result = await env.DB.prepare(
+    `
+    SELECT ${CHANNEL_SELECT}
+    FROM channels ch
+    JOIN categories cat ON cat.slug = ch.category
+    WHERE ch.status = 'approved'
+      AND ch.id != ?
+      AND ch.category = ?
+      AND lower(ch.language) = lower(?)
+    ORDER BY ch.trending_score DESC, ch.rating_average DESC, ch.created_at DESC
+    LIMIT ?
+    `,
+  )
+    .bind(channelId, category, language, limit)
+    .all<Channel>();
+
+  if ((result.results ?? []).length === 0) {
+    // Fallback: same category, any language
+    const fallback = await env.DB.prepare(
+      `
+      SELECT ${CHANNEL_SELECT}
+      FROM channels ch
+      JOIN categories cat ON cat.slug = ch.category
+      WHERE ch.status = 'approved'
+        AND ch.id != ?
+        AND ch.category = ?
+      ORDER BY ch.trending_score DESC, ch.rating_average DESC, ch.created_at DESC
+      LIMIT ?
+      `,
+    )
+      .bind(channelId, category, limit)
+      .all<Channel>();
+    return fallback.results ?? [];
+  }
+
+  return result.results ?? [];
+}
+
+// ─── Channel Export ──────────────────────────────────────────────────────────
+
+export async function listAllApprovedChannels(env: Env, limit = 5000): Promise<Channel[]> {
+  const result = await env.DB.prepare(
+    `
+    SELECT ${CHANNEL_SELECT}
+    FROM channels ch
+    JOIN categories cat ON cat.slug = ch.category
+    WHERE ch.status = 'approved'
+      AND ch.channel_type = 'public'
+      AND ch.channel_username IS NOT NULL
+      AND ch.channel_username != ''
+    ORDER BY ch.category, ch.created_at DESC
+    LIMIT ?
+    `,
+  )
+    .bind(limit)
+    .all<Channel>();
+
+  return result.results ?? [];
+}
+
+// ─── Bulk Add Log ────────────────────────────────────────────────────────────
+
+export async function logBulkAddResult(
+  env: Env,
+  adminId: number,
+  total: number,
+  added: number,
+  duplicate: number,
+  invalid: number,
+): Promise<void> {
+  try {
+    await env.DB.prepare(
+      `INSERT INTO import_logs (admin_id, total, added, duplicate, invalid)
+       VALUES (?, ?, ?, ?, ?)`,
+    )
+      .bind(adminId, total, added, duplicate, invalid)
+      .run();
+  } catch {
+    console.warn('import_logs table not found, skipping log write');
+  }
+}
+
+// ─── Duplicate Check by Username ─────────────────────────────────────────────
+
+export async function channelExistsByUsername(
+  env: Env,
+  username: string,
+): Promise<boolean> {
+  const row = await env.DB.prepare(
+    `SELECT id FROM channels WHERE channel_username = ? COLLATE NOCASE LIMIT 1`,
+  )
+    .bind(username)
+    .first<{ id: number }>();
+  return Boolean(row);
+}
+
+// ─── List channels by language ───────────────────────────────────────────────
+
+export async function listChannelsByLanguage(
+  env: Env,
+  language: string,
+  offset: number,
+  limit: number,
+): Promise<Channel[]> {
+  const result = await env.DB.prepare(
+    `
+    SELECT ${CHANNEL_SELECT}
+    FROM channels ch
+    JOIN categories cat ON cat.slug = ch.category
+    WHERE ch.status = 'approved' AND lower(ch.language) = lower(?)
+    ORDER BY ch.featured DESC, ch.verified DESC, ch.trending_score DESC, ch.created_at DESC
+    LIMIT ? OFFSET ?
+    `,
+  )
+    .bind(language, limit, Math.max(0, offset))
+    .all<Channel>();
+
+  return result.results ?? [];
+}
+
+export async function countChannelsByLanguage(env: Env, language: string): Promise<number> {
+  const row = await env.DB.prepare(
+    `SELECT COUNT(*) AS c FROM channels WHERE status = 'approved' AND lower(language) = lower(?)`,
+  )
+    .bind(language)
+    .first<{ c: number }>();
+  return row?.c ?? 0;
+}

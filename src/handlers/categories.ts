@@ -1,4 +1,10 @@
-import { findCategoryBySlug, listCategories, listChannelsByCategory } from "../db";
+import {
+  findCategoryBySlug,
+  listCategories,
+  listChannelsByCategory,
+  listChannelsByLanguage,
+  countChannelsByLanguage,
+} from "../db";
 import { sendOrEdit } from "../telegram";
 import type { BotContext } from "../types";
 import {
@@ -7,10 +13,11 @@ import {
   categoriesText,
   channelListKeyboard,
   channelListText,
+  channelResultsKeyboard,
+  channelResultsText,
   languagesText,
   languagesKeyboard,
 } from "../ui";
-import { searchChannels } from "../db";
 import { editOrSendPage } from "./banners";
 import type { TelegramMessage } from "../types";
 
@@ -84,28 +91,29 @@ export async function handleLanguageChannels(
 ): Promise<void> {
   const safePage = Math.max(0, page);
 
-  // We reuse searchChannels for language filtering to be consistent
-  const channels = await searchChannels(ctx.env, {
-    query: "",
-    sort: "trending",
-    language: language,
-    limit: PAGE_SIZE + 1,
-    offset: safePage * PAGE_SIZE,
-  });
+  const rows = await listChannelsByLanguage(ctx.env, language, safePage * PAGE_SIZE, PAGE_SIZE + 1);
+  const channels = rows.slice(0, PAGE_SIZE);
+  const hasNext = rows.length > PAGE_SIZE;
 
-  const hasNext = channels.length > PAGE_SIZE;
-  const pageChannels = channels.slice(0, PAGE_SIZE);
+  const title = `🌍 Language: ${language} • Page ${safePage + 1}${hasNext ? "" : " • Last page"}`;
 
-  // Reuse the category list UI but with a language title
-  const title = `🌍 Language: ${language}`;
-  const text = pageChannels.length === 0
-    ? [title, "", "📭 No channels found."].join("\n")
-    : [title, "", `Page ${safePage + 1}${hasNext ? "" : " • Last page"}`, "", ...pageChannels.flatMap((c, i) => [`${i + 1}. ${c.title}`, `🆔 ID: ${c.id} • ⭐ ${c.rating_average ?? 0}/5`, ""])].join("\n");
+  const pagerRows: { text: string; callback_data: string }[] = [];
+  if (safePage > 0) pagerRows.push({ text: "⬅️ Previous", callback_data: `lang_page:${language}:${safePage - 1}` });
+  if (hasNext) pagerRows.push({ text: "Next ➡️", callback_data: `lang_page:${language}:${safePage + 1}` });
 
-  // Since we don't have a specific languageListKeyboard, we can reuse channelListKeyboard with a fake slug, or searchResultsKeyboard
-  // Actually searchResultsKeyboard is perfect for this. We need to import it.
+  const keyboard = channelResultsKeyboard(channels, "languages_page");
+  if (pagerRows.length > 0) {
+    keyboard.inline_keyboard.unshift(pagerRows);
+  }
 
-  // Wait, I should use the proper UI functions from ui.ts. Let me check what we have for search.
-  // Let me just import searchResultsText and searchResultsKeyboard from ui.ts and use them.
-  void text;
+  await sendOrEdit(
+    ctx.telegram,
+    chatId,
+    messageId,
+    channelResultsText(title, channels),
+    {
+      reply_markup: keyboard,
+      disable_web_page_preview: true,
+    },
+  );
 }

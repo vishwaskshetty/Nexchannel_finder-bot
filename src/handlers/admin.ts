@@ -56,7 +56,8 @@ import {
   publicPostKeyboard,
   rejectedChannelKeyboard,
 } from "../ui";
-import { processPasteRanking, processCsvImport } from "./import";
+import { processPasteRanking, processCsvImport, processBulkAdd, processAddChannelLine } from "./import";
+
 
 type AdminAction =
   | { kind: "menu" }
@@ -314,6 +315,29 @@ export async function handleAdminText(
     return true;
   }
 
+  if (state.mode === "bulkadd_wait") {
+    await clearAdminState(ctx.env, userId);
+    await processBulkAdd(ctx, message.chat.id, userId, text);
+    return true;
+  }
+
+  if (state.mode === "addchannel_wait") {
+    await clearAdminState(ctx.env, userId);
+    const result = await processAddChannelLine(ctx, message.chat.id, userId, text);
+    if (result.status === "added") {
+      await ctx.telegram.sendMessage(
+        message.chat.id,
+        `✅ <b>Channel Added</b>\n\n📢 ${result.username}\n📂 ${result.category ?? ""}\n🌐 ${result.language ?? ""}`,
+        { parse_mode: "HTML" },
+      );
+    } else if (result.status === "duplicate") {
+      await ctx.telegram.sendMessage(message.chat.id, `⚠️ Channel ${result.username} already exists in the database.`);
+    } else {
+      await ctx.telegram.sendMessage(message.chat.id, `❌ ${result.reason ?? "Invalid channel or format."}`);
+    }
+    return true;
+  }
+
   if (state.mode === "banner_wait") {
     await ctx.telegram.sendMessage(
       message.chat.id,
@@ -324,6 +348,7 @@ export async function handleAdminText(
 
   return false;
 }
+
 
 
 export async function handleAdminPanel(
@@ -367,6 +392,49 @@ export async function handlePendingSubmissions(
 ): Promise<void> {
   await showStatusPage(ctx, chatId, messageId, userId, "pending", 0);
 }
+
+export async function handlePendingCommand(
+  ctx: BotContext,
+  chatId: number,
+): Promise<void> {
+  const pendingChannels = await listAdminChannelsByStatus(ctx.env, "pending", 0, 50);
+
+  if (pendingChannels.length === 0) {
+    await ctx.telegram.sendMessage(chatId, adminEmptyText("⏳ Pending Channels"));
+    return;
+  }
+
+  await ctx.telegram.sendMessage(chatId, `⏳ Found ${pendingChannels.length} pending channels. Sending details...`);
+
+  for (const channel of pendingChannels) {
+    const text = [
+      "<b>⏳ Pending Channel</b>",
+      "",
+      `📢 Title: ${channel.title}`,
+      `🔗 Username: ${channel.channel_username ?? channel.username ?? ""}`,
+      `📂 Category: ${channel.category ?? "other"}`,
+      `🌐 Language: ${channel.language ?? "Mixed"}`,
+      `📝 Description: ${channel.description ?? ""}`,
+      `🏷 Tags: ${channel.tags ?? ""}`
+    ].join("\n");
+
+    await ctx.telegram.sendMessage(chatId, text, {
+      parse_mode: "HTML",
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: "✅ Approve", callback_data: `admin_approve:${channel.id}` },
+            { text: "❌ Reject", callback_data: `admin_reject:${channel.id}` }
+          ]
+        ]
+      }
+    });
+
+    // small delay to avoid rate limits
+    await new Promise(r => setTimeout(r, 100));
+  }
+}
+
 
 export async function handleApprovedChannels(
   ctx: BotContext,

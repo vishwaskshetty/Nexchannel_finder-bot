@@ -5,9 +5,13 @@ import {
   handleCheckReviewChannelCommand,
   handleTestReviewChannelCommand,
   isAdminCallbackData,
+  handlePendingCommand,
 } from "./handlers/admin";
-import { handleCategories, handleCategoryChannels } from "./handlers/categories";
-import { handleChannelDetails, handleRatingPrompt } from "./handlers/channels";
+
+
+import { handleCategories, handleCategoryChannels, handleLanguageChannels, handleLanguages } from "./handlers/categories";
+import { handleChannelDetails, handleRatingPrompt, handleSimilarChannels } from "./handlers/channels";
+
 import { handleLeaderboard, postWeeklyLeaderboard, publicPostChannel } from "./handlers/leaderboard";
 import {
   handleMyChannelText,
@@ -56,7 +60,11 @@ import {
   handleImportPasteCommand,
   handleImportCsvCommand,
   handleImportStatsCommand,
+  handleBulkAddCommand,
+  handleAddChannelCommand,
 } from "./handlers/import";
+import { handleStatsCommand, handleExportCommand } from "./handlers/export";
+
 import {
   handleSetBannerCommand,
   handleBannersStatusCommand,
@@ -430,6 +438,36 @@ async function handleMessage(ctx: BotContext, message: TelegramMessage): Promise
     await handleBannersStatusCommand(ctx, message);
     return;
   }
+  // --- Bulk Add ---
+  if (command?.name === "bulkadd") {
+    await handleBulkAddCommand(ctx, message);
+    return;
+  }
+
+  // --- Stats ---
+  if (command?.name === "stats") {
+    await handleStatsCommand(ctx, message);
+    return;
+  }
+
+  // --- Export ---
+  if (command?.name === "export") {
+    await handleExportCommand(ctx, message);
+    return;
+  }
+
+  // --- Pending: send individual channel cards with Approve/Reject buttons ---
+  if (command?.name === "pending") {
+    const adminId = message.from?.id;
+    if (!adminId || !ctx.adminIds.has(adminId)) {
+      await ctx.telegram.sendMessage(message.chat.id, "❌ Admin access only.");
+      return;
+    }
+    await handlePendingCommand(ctx, message.chat.id);
+    return;
+  }
+
+
   if (command?.name === "debugbanners") {
     await handleDebugBannersCommand(ctx, message);
     return;
@@ -440,6 +478,7 @@ async function handleMessage(ctx: BotContext, message: TelegramMessage): Promise
   }
 
 
+
   if (await handleAdminText(ctx, message, text)) {
     return;
   }
@@ -448,10 +487,22 @@ async function handleMessage(ctx: BotContext, message: TelegramMessage): Promise
     return;
   }
 
-  if (command?.name === "submit" || command?.name === "addchannel" || command?.name === "add") {
+  // /addchannel — admin-only single channel add
+  if (command?.name === "addchannel" || command?.name === "add") {
+    if (ctx.adminIds.has(userId ?? 0)) {
+      await handleAddChannelCommand(ctx, message, command.args);
+      return;
+    }
+    // Non-admin: show admin-only error
+    await ctx.telegram.sendMessage(message.chat.id, "❌ Admin access only. Use /submit to add your channel.");
+    return;
+  }
+
+  if (command?.name === "submit") {
     await handleSubmitCommand(ctx, message, command.args);
     return;
   }
+
 
   if (!command && (await handleSubmitText(ctx, message, text))) {
     return;
@@ -472,6 +523,9 @@ async function handleMessage(ctx: BotContext, message: TelegramMessage): Promise
       break;
     case "categories":
       await handleCategories(ctx, message.chat.id);
+      break;
+    case "languages":
+      await handleLanguages(ctx, message.chat.id);
       break;
     case "saved":
       await handleSavedChannels(ctx, message.chat.id, undefined, message.from?.id ?? 0);
@@ -495,6 +549,7 @@ async function handleMessage(ctx: BotContext, message: TelegramMessage): Promise
         "I do not know that command yet. Try /help or send a search keyword.",
       );
   }
+
 }
 
 async function handleCallback(callbackQuery: TelegramCallbackQuery, env: Env): Promise<void> {
@@ -832,9 +887,35 @@ async function handleCallbackQuery(ctx: BotContext, query: TelegramCallbackQuery
     return;
   }
 
+  if (data.startsWith("similar:")) {
+    const channelId = numberAfterPrefix(data, "similar:");
+    await handleSimilarChannels(ctx, chatId, messageId, channelId);
+    return;
+  }
+
+  if (data === "languages_page") {
+    await handleLanguages(ctx, chatId, messageId);
+    return;
+  }
+
+  if (data.startsWith("language:")) {
+    const lang = data.slice("language:".length);
+    await handleLanguageChannels(ctx, chatId, messageId, lang, 0);
+    return;
+  }
+
+  if (data.startsWith("lang_page:")) {
+    const parts = data.split(":");
+    const lang = parts[1] ?? "English";
+    const page = Number(parts[2] ?? "0") || 0;
+    await handleLanguageChannels(ctx, chatId, messageId, lang, page);
+    return;
+  }
+
   console.warn("Unknown callback:", data);
   await ctx.telegram.answerCallbackQuery(query.id, "❌ Button not connected yet.", true);
 }
+
 
 async function handleSubscriptionCheck(
   ctx: BotContext,
@@ -1116,7 +1197,7 @@ async function handleDebugCategoriesCommand(
   message: TelegramMessage,
 ): Promise<void> {
   const userId = message.from?.id;
-  if (userId !== 6059191947) {
+  if (!userId || !ctx.adminIds.has(userId)) {
     await ctx.telegram.sendMessage(message.chat.id, "❌ Admin access only.");
     return;
   }
@@ -1176,7 +1257,7 @@ async function handleDebugRecentChannelsCommand(
   message: TelegramMessage,
 ): Promise<void> {
   const userId = message.from?.id;
-  if (userId !== 6059191947) {
+  if (!userId || !ctx.adminIds.has(userId)) {
     await ctx.telegram.sendMessage(message.chat.id, "❌ Admin access only.");
     return;
   }
