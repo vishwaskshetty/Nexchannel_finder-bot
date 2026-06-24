@@ -30,6 +30,7 @@ export interface TelegramUser {
   last_name?: string;
   username?: string;
   language_code?: string;
+  ui_language?: string;
 }
 
 export interface TelegramChat {
@@ -55,7 +56,9 @@ export interface TelegramMessage {
   chat: TelegramChat;
   date?: number;
   text?: string;
+  caption?: string;
   photo?: TelegramPhotoSize[];
+  forward_from_chat?: TelegramChat;
 }
 
 export interface TelegramCallbackQuery {
@@ -145,6 +148,7 @@ export interface Channel {
   rating_count?: number;
   rating_average?: number;
   trending_score?: number;
+  views?: number;
   weekly_clicks?: number;
   weekly_rating_average?: number;
   weekly_rating_count?: number;
@@ -156,6 +160,13 @@ export interface Channel {
   import_batch_id?: string;
   last_imported_at?: string;
   is_public_listing?: number | boolean;
+  ownership_verified?: number | boolean;
+  owner_user_id?: number | null;
+  verified_at?: string | null;
+  quality_status?: string | null;
+  admin_notes?: string | null;
+  is_scam?: number | boolean;
+  last_checked_at?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -227,6 +238,14 @@ export interface Report {
   status: "open" | "resolved";
   created_at: string;
   resolved_at: string | null;
+}
+
+export interface UserActivity {
+  id: number;
+  user_id: number;
+  channel_id: number;
+  action: string;
+  created_at: string;
 }
 
 export interface SubmitChannelInput {
@@ -332,4 +351,17 @@ export interface YoutubeVerification {
   approved_at: string | null;
   rejected_at: string | null;
   updated_at: string;
+}
+
+export type UILanguage = 'English' | 'Hindi' | 'Kannada' | 'Tamil' | 'Telugu' | 'Malayalam';
+
+export interface Translations {
+  mainMenu: string;
+  search: string;
+  categories: string;
+  languageFilter: string;
+  trending: string;
+  saved: string;
+  submit: string;
+  help: string;
 }

@@ -415,7 +415,13 @@ export async function handlePendingCommand(
       `📂 Category: ${channel.category ?? "other"}`,
       `🌐 Language: ${channel.language ?? "Mixed"}`,
       `📝 Description: ${channel.description ?? ""}`,
-      `🏷 Tags: ${channel.tags ?? ""}`
+      `🏷 Tags: ${channel.tags ?? ""}`,
+      "",
+      "<b>Quality Checklist:</b>",
+      `✅ Has Description: ${channel.description ? "Yes" : "No"}`,
+      `✅ Has Avatar: Pending`,
+      `✅ 100+ Subs: Pending`,
+      `✅ Safe Content: Pending`,
     ].join("\n");
 
     await ctx.telegram.sendMessage(chatId, text, {

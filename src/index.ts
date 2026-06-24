@@ -11,6 +11,8 @@ import {
 
 import { handleCategories, handleCategoryChannels, handleLanguageChannels, handleLanguages } from "./handlers/categories";
 import { handleChannelDetails, handleRatingPrompt, handleSimilarChannels } from "./handlers/channels";
+import { handleAnalyticsCallback } from "./handlers/analytics";
+import { handleRecommendationsCallback } from "./handlers/recommendations";
 
 import { handleLeaderboard, postWeeklyLeaderboard, publicPostChannel } from "./handlers/leaderboard";
 import {
@@ -43,6 +45,10 @@ import {
   handleOwnershipVerificationCallback,
   isOwnershipVerificationCallbackData,
 } from "./handlers/verify";
+import {
+  handleVerifyCommand,
+  handleVerifyForwardedMessage
+} from "./handlers/verify_owner";
 import {
   checkYoutubeVerification,
   handleCheckYtCommand,
@@ -343,6 +349,10 @@ async function handleMessage(ctx: BotContext, message: TelegramMessage): Promise
     // Fall through if not a YouTube proof photo
   }
 
+  if (message.forward_from_chat) {
+    const handled = await handleVerifyForwardedMessage(ctx, message);
+    if (handled) return;
+  }
 
   if (!text) {
     return;
@@ -487,9 +497,8 @@ async function handleMessage(ctx: BotContext, message: TelegramMessage): Promise
     return;
   }
 
-  // /addchannel — admin-only single channel add
   if (command?.name === "addchannel" || command?.name === "add") {
-    if (ctx.adminIds.has(userId ?? 0)) {
+    if (ctx.adminIds.has(message.from?.id ?? 0)) {
       await handleAddChannelCommand(ctx, message, command.args);
       return;
     }
@@ -503,6 +512,10 @@ async function handleMessage(ctx: BotContext, message: TelegramMessage): Promise
     return;
   }
 
+  if (command?.name === "verify") {
+    await handleVerifyCommand(ctx, message);
+    return;
+  }
 
   if (!command && (await handleSubmitText(ctx, message, text))) {
     return;
@@ -694,6 +707,32 @@ async function handleCallbackQuery(ctx: BotContext, query: TelegramCallbackQuery
 
   if (data.startsWith("rating:") || data.startsWith("rt:")) {
     await handleRatingCallback(ctx, query, chatId, messageId, userId, data);
+    return;
+  }
+
+  if (data.startsWith("open_channel:")) {
+    const channelId = numberAfterPrefix(data, "open_channel:");
+    const channel = await getChannel(ctx.env, channelId);
+    if (channel) {
+      const joinLink = channel.channel_link || channel.invite_link || (channel.channel_username ? `https://t.me/${channel.channel_username.replace(/^@/, '')}` : null);
+      if (joinLink) {
+        await incrementChannelClicks(ctx.env, channelId, userId);
+        await ctx.telegram.answerCallbackQuery(query.id, undefined, false, joinLink);
+        return;
+      }
+    }
+    await ctx.telegram.answerCallbackQuery(query.id, "Link not available.", true);
+    return;
+  }
+
+  if (data.startsWith("analytics:")) {
+    const channelId = numberAfterPrefix(data, "analytics:");
+    await handleAnalyticsCallback(ctx, chatId, messageId, channelId);
+    return;
+  }
+
+  if (data.startsWith("recommend:")) {
+    await handleRecommendationsCallback(ctx, chatId, messageId, userId);
     return;
   }
 

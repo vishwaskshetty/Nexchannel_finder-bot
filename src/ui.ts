@@ -11,6 +11,93 @@ import type {
 import { categoryKeyFromSlug, CATEGORIES } from "./config/categories";
 import { LANGUAGES } from "./config/languages";
 
+export const TEXT = {
+  English: {
+    mainMenu: "Main Menu",
+    search: "🔍 Search Channels",
+    categories: "📂 Browse Categories",
+    languageFilter: "🌐 Channel Language Filter",
+    trending: "🔥 Trending Channels",
+    recommendations: "🧠 Smart Recommendations",
+    saved: "💾 My Saved Channels",
+    submit: "➕ Submit Channel",
+    botLanguage: "🌍 Bot Language",
+    botsZone: "🤖 Bots Zone",
+    earningBots: "💰 Earning Bots",
+    help: "ℹ️ Help",
+  },
+  Hindi: {
+    mainMenu: "मुख्य मेनू",
+    search: "🔍 चैनल खोजें",
+    categories: "📂 कैटेगरी देखें",
+    languageFilter: "🌐 भाषा फ़िल्टर",
+    trending: "🔥 ट्रेंडिंग चैनल",
+    recommendations: "🧠 स्मार्ट सिफारिशें",
+    saved: "💾 सेव किए गए चैनल",
+    submit: "➕ चैनल सबमिट करें",
+    botLanguage: "🌍 बॉट भाषा",
+    botsZone: "🤖 बॉट्स ज़ोन",
+    earningBots: "💰 अर्निंग बॉट्स",
+    help: "ℹ️ मदद",
+  },
+  Kannada: {
+    mainMenu: "ಮುಖ್ಯ ಮೆನು",
+    search: "🔍 ಚಾನೆಲ್ ಹುಡುಕಿ",
+    categories: "📂 ವರ್ಗಗಳನ್ನು ನೋಡಿ",
+    languageFilter: "🌐 ಭಾಷೆ ಫಿಲ್ಟರ್",
+    trending: "🔥 ಟ್ರೆಂಡಿಂಗ್ ಚಾನೆಲ್ಗಳು",
+    recommendations: "🧠 ಸ್ಮಾರ್ಟ್ ಶಿಫಾರಸುಗಳು",
+    saved: "💾 ಉಳಿಸಿದ ಚಾನೆಲ್ಗಳು",
+    submit: "➕ ಚಾನೆಲ್ ಸಲ್ಲಿಸಿ",
+    botLanguage: "🌍 ಬಾಟ್ ಭಾಷೆ",
+    botsZone: "🤖 ಬಾಟ್ಸ್ ವಲಯ",
+    earningBots: "💰 ಗಳಿಸುವ ಬಾಟ್‌ಗಳು",
+    help: "ℹ️ ಸಹಾಯ",
+  },
+  Tamil: {
+    mainMenu: "முக்கிய மெனு",
+    search: "🔍 சேனல்கள் தேடு",
+    categories: "📂 வகைகள் பார்க்க",
+    languageFilter: "🌐 மொழி வடிகட்டி",
+    trending: "🔥 பிரபல சேனல்கள்",
+    recommendations: "🧠 புத்திசாலி பரிந்துரைகள்",
+    saved: "💾 சேமித்த சேனல்கள்",
+    submit: "➕ சேனல் சமர்ப்பிக்க",
+    botLanguage: "🌍 பாட் மொழி",
+    botsZone: "🤖 பாட்ஸ் மண்டலம்",
+    earningBots: "💰 வருமானம் தரும் பாட்ஸ்",
+    help: "ℹ️ உதவி",
+  },
+  Telugu: {
+    mainMenu: "ప్రధాన మెనూ",
+    search: "🔍 చానెల్స్ వెతకండి",
+    categories: "📂 కేటగిరీలు చూడండి",
+    languageFilter: "🌐 భాష ఫిల్టర్",
+    trending: "🔥 ట్రెండింగ్ చానెల్స్",
+    recommendations: "🧠 స్మార్ట్ సిఫార్సులు",
+    saved: "💾 సేవ్ చేసిన చానెల్స్",
+    submit: "➕ చానెల్ సమర్పించండి",
+    botLanguage: "🌍 బాట్ భాష",
+    botsZone: "🤖 బాట్స్ జోన్",
+    earningBots: "💰 ఎర్నింగ్ బాట్స్",
+    help: "ℹ️ సహాయం",
+  },
+  Malayalam: {
+    mainMenu: "പ്രധാന മെനു",
+    search: "🔍 ചാനലുകൾ തിരയുക",
+    categories: "📂 വിഭാഗങ്ങൾ കാണുക",
+    languageFilter: "🌐 ഭാഷ ഫിൽട്ടർ",
+    trending: "🔥 ട്രെൻഡിംഗ് ചാനലുകൾ",
+    recommendations: "🧠 സ്മാർട്ട് ശുപാർശകൾ",
+    saved: "💾 സേവ് ചെയ്ത ചാനലുകൾ",
+    submit: "➕ ചാനൽ സമർപ്പിക്കുക",
+    botLanguage: "🌍 ബോട്ട് ഭാഷ",
+    botsZone: "🤖 ബോട്ടുകൾ",
+    earningBots: "💰 വരുമാന ബോട്ടുകൾ",
+    help: "ℹ️ സഹായം",
+  }
+} as const;
+
 type KeyboardRows = TelegramInlineKeyboardMarkup["inline_keyboard"];
 
 interface PaginationOptions {
@@ -72,28 +159,34 @@ export const HOME_TEXT = [
 export const HELP_TEXT = [
   "<b>ℹ️ NexChannel Finder Help</b>",
   "",
-  "Use this bot to discover Telegram channels by category, language, trending, and search.",
+  "Find trusted Telegram channels by search, category, language, rating, and trending score.",
   "",
-  "━━━━━━━━━━━━━━",
+  "<b>⭐ Features</b>",
+  "🔍 Direct search by typing any keyword",
+  "📂 Browse channels by category",
+  "🌐 Filter channels by language",
+  "🔥 Trending channels by smart score",
+  "🧠 Smart recommendations",
+  "💾 Save favorite channels",
+  "⭐ Rate channels",
+  "🔎 Find similar channels",
+  "🔐 Ownership verified channels",
+  "🚫 Report bad channels",
   "",
-  "<b>User Commands:</b>",
-  "/start — Open main menu",
-  "/help — Show this help",
-  "/search — Search channels",
-  "/submit — Submit your channel",
-  "/saved — View saved channels",
+  "<b>User Commands</b>",
+  "/start - Open main menu",
+  "/help - Show help",
+  "/search - Search channels",
+  "/submit - Submit your channel",
+  "/mysaved - View saved channels",
   "",
-  "━━━━━━━━━━━━━━",
-  "",
-  "<b>Admin Commands:</b>",
-  "/addchannel — Add one channel",
-  "/bulkadd — Add many channels",
-  "/pending — View pending channels",
-  "/stats — View bot stats",
-  "/export — Export channel list",
-  "/postleaderboard — Post leaderboard",
-  "/importstats — View import stats",
-  "/banners — View banner status",
+  "<b>Admin Commands</b>",
+  "/addchannel - Add one channel",
+  "/bulkadd - Add many channels",
+  "/pending - View pending channels",
+  "/stats - View bot database stats",
+  "/export - Export approved channels",
+  "/postleaderboard - Post weekly leaderboard"
 ].join("\n");
 
 
@@ -152,27 +245,33 @@ export const PRIVATE_CHANNEL_RULE_TEXT = [
   "Request-to-join private links are not allowed.",
 ].join("\n");
 
-export function mainMenuKeyboard(isAdmin = false): TelegramInlineKeyboardMarkup {
+export function mainMenuKeyboard(isAdmin = false, uiLanguage: string = 'English'): TelegramInlineKeyboardMarkup {
+  const langKey = (TEXT as any)[uiLanguage] ? uiLanguage : 'English';
+  const t = (TEXT as any)[langKey];
+
   const rows: KeyboardRows = [
     [
-      { text: "🔍 Search Channels", callback_data: "search" },
-      { text: "📂 Browse Categories", callback_data: "categories" },
+      { text: t.search, callback_data: "search" },
     ],
     [
-      { text: "🌐 Language Filter", callback_data: "languages_page" },
-      { text: "🔥 Trending Channels", callback_data: "top" },
+      { text: t.categories, callback_data: "categories" },
+      { text: t.languageFilter, callback_data: "languages_page" },
     ],
     [
-      { text: "🏆 Weekly Leaderboard", callback_data: "leaderboard" },
-      { text: "💾 My Saved Channels", callback_data: "saved" },
+      { text: t.trending, callback_data: "top" },
+      { text: t.recommendations, callback_data: "recommend:user" },
     ],
     [
-      { text: "➕ Submit Channel", callback_data: "submit" },
-      { text: "🤖 Bots Zone", callback_data: "bots_section" },
+      { text: t.saved, callback_data: "saved" },
+      { text: t.submit, callback_data: "submit" },
     ],
     [
-      { text: "💰 Earning Bots", callback_data: "bots_earning" },
-      { text: "ℹ️ Help", callback_data: "help" },
+      { text: t.botLanguage, callback_data: "bot_language" },
+      { text: t.botsZone, callback_data: "bots_section" },
+    ],
+    [
+      { text: t.earningBots, callback_data: "bots_earning" },
+      { text: t.help, callback_data: "help" },
     ],
   ];
 
@@ -370,35 +469,24 @@ export function formatChannelDetails(channel: ChannelCardInput): string {
   const category = categoryLabel(channel);
   const language = channel.language ?? "Mixed";
   const rating = formatRating(channel.rating_average ?? 0);
-  const ratingCount = channel.rating_count ?? 0;
   const clicks = channel.join_clicks ?? channel.clicks ?? 0;
+  const views = channel.views ?? 0;
   const description = channel.description?.trim() || "No description added yet.";
-  const channelType = channel.channel_type === "private" ? "Private" : "Public";
+  
+  const verifiedIcon = channel.verified || channel.ownership_verified ? " ✅" : "";
+  const usernameLine = channel.channel_username ? `🔗 <b>Username:</b> ${channel.channel_username}` : `🔗 <b>Link:</b> ${channel.channel_link || channel.invite_link || 'Private'}`;
 
   const lines: Array<string | null> = [
-    "📢 𝗖𝗵𝗮𝗻𝗻𝗲𝗹 𝗗𝗲𝘁𝗮𝗶𝗹𝘀",
+    "<b>🔍 Search Result</b>",
     "",
-    SECTION_DIVIDER,
-    "",
-    `📌 𝗡𝗮𝗺𝗲: ${channel.title}${verifiedBadge(channel)}`,
-    `🆔 𝗜𝗗: ${channel.id}`,
-    `🔐 𝗧𝘆𝗽𝗲: ${channelType}`,
-    `📂 𝗖𝗮𝘁𝗲𝗴𝗼𝗿𝘆: ${category}`,
-    `🌍 𝗟𝗮𝗻𝗴𝘂𝗮𝗴𝗲: ${language}`,
-    channel.subscribers_text ? `👥 𝗦𝘂𝗯𝘀𝗰𝗿𝗶𝗯𝗲𝗿𝘀: ${channel.subscribers_text}` : null,
-    channel.owner_verified ? "🔐 𝗢𝘄𝗻𝗲𝗿: Verified" : null,
-    "",
-    `⭐ 𝗥𝗮𝘁𝗶𝗻𝗴: ${rating} / 5`,
-    `👥 𝗥𝗮𝘁𝗶𝗻𝗴𝘀: ${formatNumber(ratingCount)}`,
-    `👀 𝗖𝗹𝗶𝗰𝗸𝘀: ${formatNumber(clicks)}`,
-    "",
-    SECTION_DIVIDER,
-    "",
-    `📝 𝗔𝗯𝗼𝘂𝘁: ${description}`,
-    "",
-    SECTION_DIVIDER,
-    "",
-    "🔎 Powered by NexChannel Finder",
+    `📢 <b>Channel:</b> ${channel.title}${verifiedIcon}`,
+    usernameLine,
+    `📂 <b>Category:</b> ${category}`,
+    `🌐 <b>Language:</b> ${language}`,
+    `⭐ <b>Rating:</b> ${rating}/5`,
+    `👁 <b>Views:</b> ${formatNumber(views)}`,
+    `🖱 <b>Clicks:</b> ${formatNumber(clicks)}`,
+    `📝 <b>About:</b> ${description}`,
   ];
 
   return lines.filter((line): line is string => line !== null).join("\n");
@@ -421,23 +509,22 @@ export function channelActionKeyboard(
   const backCallback = options.backCallback ?? "home";
   const homeCallback = options.homeCallback ?? "home";
 
-  // Join button: uses channel_link for public, invite_link for private
   if (joinLink) {
-    rows.push([{ text: "🔗 Open Channel", url: joinLink }]);
+    rows.push([{ text: "🔗 Open Channel", callback_data: `open_channel:${channel.id}` }]);
   }
-
 
   rows.push(
     [
-      { text: "⭐ Rate", callback_data: `rate:${channel.id}` },
       {
         text: options.isSaved ? "✅ Saved" : "💾 Save",
         callback_data: options.isSaved ? `unsave:${channel.id}` : `save:${channel.id}`,
       },
+      { text: "⭐ Rate", callback_data: `rate:${channel.id}` },
+      { text: "🔎 Similar", callback_data: `similar:${channel.id}` },
     ],
     [
-      { text: "🔎 Similar", callback_data: `similar:${channel.id}` },
-      { text: "🚨 Report", callback_data: `report:${channel.id}` },
+      { text: "📊 Analytics", callback_data: `analytics:${channel.id}` },
+      { text: "🚫 Report", callback_data: `report:${channel.id}` },
     ],
     backHomeRow(backCallback, homeCallback),
   );
@@ -547,21 +634,24 @@ export function searchResultsText(
   hasNext: boolean,
 ): string {
   if (channels.length === 0) {
-    return ["📭 No channels found.", "", "Try another keyword or browse categories."].join("\n");
+    return [
+      "<b>😕 No channels found</b>",
+      "",
+      "Try another keyword or browse categories."
+    ].join("\n");
   }
 
   const queryLabel = state.query.trim() || "All approved channels";
-  const filters = searchFilterSummary(state);
+  const pageInfo = `Page ${page + 1}${hasNext ? "" : " • Last page"}`;
 
-  return formatChannelList(
-    channels,
-    [
-      "🔎 Search Channels",
-      `🔍 Query: ${queryLabel}`,
-      `⚙️ Filter: ${filters}`,
-      `📄 Page ${page + 1}${hasNext ? "" : " • Last page"}`,
-    ].join("\n"),
-  );
+  return [
+    `<b>🔍 Search Results for:</b> ${queryLabel}`,
+    `📄 ${pageInfo}`,
+    "",
+    ...channels.map((channel, index) => channelListLine(channel, index + 1)),
+    "",
+    "Choose a channel below.",
+  ].join("\n");
 }
 
 export function searchResultsKeyboard(
@@ -1022,7 +1112,7 @@ export function adminPanelText(): string {
   ].join("\n");
 }
 
-export function adminStatsText(stats: AdminStats): string {
+export function adminStatsText(stats: AdminStats & { ownershipVerifiedChannels?: number; scamChannels?: number; totalViews?: number }): string {
   return [
     "📊 𝗕𝗼𝘁 𝗦𝘁𝗮𝘁𝘀",
     "",
@@ -1032,13 +1122,39 @@ export function adminStatsText(stats: AdminStats): string {
     `⏳ Pending: ${formatNumber(stats.pendingChannels)}`,
     `✅ Approved: ${formatNumber(stats.approvedChannels)}`,
     `🚫 Hidden: ${formatNumber(stats.hiddenChannels)}`,
-    `⭐ Verified: ${formatNumber(stats.verifiedChannels)}`,
+    `⭐ Quality Verified: ${formatNumber(stats.verifiedChannels)}`,
+    `🔐 Ownership Verified: ${formatNumber(stats.ownershipVerifiedChannels ?? 0)}`,
+    `🤬 Scam Flagged: ${formatNumber(stats.scamChannels ?? 0)}`,
     `👥 Users: ${formatNumber(stats.totalUsers)}`,
     `💾 Saved: ${formatNumber(stats.totalSaved)}`,
     `⭐ Ratings: ${formatNumber(stats.totalRatings)}`,
+    `👁 Total Views: ${formatNumber(stats.totalViews ?? 0)}`,
+    `🖱 Total Clicks: ${formatNumber(stats.totalClicks)}`,
     `🚨 Reports: ${formatNumber(stats.totalReports)}`,
     "",
     SECTION_DIVIDER,
+  ].join("\n");
+}
+
+export function formatChannelAnalytics(channel: Channel): string {
+  const rating = formatRating(channel.rating_average ?? 0);
+  return [
+    `<b>📊 Analytics for ${channel.title}</b>`,
+    "",
+    `👁 <b>Total Views:</b> ${formatNumber(channel.views ?? 0)}`,
+    `🖱 <b>Total Clicks:</b> ${formatNumber(channel.join_clicks ?? channel.clicks ?? 0)}`,
+    `⭐ <b>Average Rating:</b> ${rating} / 5 (${formatNumber(channel.rating_count ?? 0)} ratings)`,
+    `🔥 <b>Trending Score:</b> ${formatNumber(channel.trending_score ?? 0)}`,
+  ].join("\n");
+}
+
+export function formatRecommendationText(channel: Channel): string {
+  return [
+    `<b>🧠 Smart Recommendation for you!</b>`,
+    "",
+    `Based on your recent activity, you might like this channel:`,
+    "",
+    formatChannelDetails(channel)
   ].join("\n");
 }
 
@@ -1159,8 +1275,10 @@ export function adminChannelText(title: string, channel: Channel): string {
     SECTION_DIVIDER,
     "",
     `⭐ Rating: ${formatRating(channel.rating_average ?? 0)} / 5 (👥 ${formatNumber(channel.rating_count ?? 0)})`,
-    `👀 Clicks: ${formatNumber(channel.join_clicks ?? channel.clicks ?? 0)}`,
+    `👀 Views: ${formatNumber(channel.views ?? 0)}`,
+    `🖱 Clicks: ${formatNumber(channel.join_clicks ?? channel.clicks ?? 0)}`,
     `🚨 Reports: ${formatNumber(channel.reports ?? channel.reports_count ?? 0)}`,
+    `🔥 Trending Score: ${formatNumber(channel.trending_score ?? 0)}`,
   ]
     .filter((line): line is string => line !== null)
     .join("\n");
@@ -1324,6 +1442,13 @@ export function submissionDetailsText(submission: Submission): string {
     submission.tags ? `🏷 Tags: ${submission.tags}` : "",
     `👤 Submitted by: ${submission.user_id}`,
     submission.admin_username ? `🛠 Admin Username: ${submission.admin_username}` : "",
+    "",
+    "<b>Quality Checklist:</b>",
+    `✅ Has Description: ${submission.description ? "Yes" : "No"}`,
+    `✅ Has Avatar: Pending`,
+    `✅ 100+ Subs: Pending`,
+    `✅ Safe Content: Pending`,
+    "",
     "🔐 Ownership Verification",
     `Status: ${verificationStatusLabel(submission)}`,
     `✅ Status: ${capitalize(submission.status)}`,

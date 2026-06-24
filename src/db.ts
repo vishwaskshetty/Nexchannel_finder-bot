@@ -65,6 +65,13 @@ const CHANNEL_SELECT = `
   ch.import_batch_id,
   ch.last_imported_at,
   ch.is_public_listing,
+  ch.ownership_verified,
+  ch.owner_user_id,
+  ch.verified_at,
+  ch.quality_status,
+  ch.admin_notes,
+  ch.is_scam,
+  ch.last_checked_at,
   ch.created_at,
   ch.updated_at
 `;
@@ -76,8 +83,8 @@ export async function testDatabase(env: Env): Promise<{ ok: number } | null> {
 export async function upsertUser(env: Env, user: TelegramUser): Promise<void> {
   await env.DB.prepare(
     `
-    INSERT INTO users (telegram_id, username, first_name, last_seen_at)
-    VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+    INSERT INTO users (telegram_id, username, first_name, last_seen_at, ui_language)
+    VALUES (?, ?, ?, CURRENT_TIMESTAMP, 'English')
     ON CONFLICT(telegram_id) DO UPDATE SET
       username = excluded.username,
       first_name = excluded.first_name,
@@ -86,6 +93,18 @@ export async function upsertUser(env: Env, user: TelegramUser): Promise<void> {
   )
     .bind(user.id, user.username ?? null, user.first_name)
     .run();
+}
+
+export async function getUser(env: Env, telegramId: number): Promise<TelegramUser | null> {
+  return env.DB.prepare(
+    `SELECT telegram_id as id, first_name, last_name, username, language_code, ui_language FROM users WHERE telegram_id = ?`
+  ).bind(telegramId).first<TelegramUser>();
+}
+
+export async function updateUserUiLanguage(env: Env, telegramId: number, language: string): Promise<void> {
+  await env.DB.prepare(
+    `UPDATE users SET ui_language = ?, updated_at = CURRENT_TIMESTAMP WHERE telegram_id = ?`
+  ).bind(language, telegramId).run();
 }
 
 export async function listCategories(env: Env): Promise<Category[]> {
@@ -132,7 +151,7 @@ export async function listTopChannels(env: Env, limit = 10, offset = 0): Promise
     SELECT ${CHANNEL_SELECT}
     FROM channels ch
     JOIN categories cat ON cat.slug = ch.category
-    WHERE ch.status = 'approved'
+    WHERE ch.status = 'approved' AND (ch.is_scam IS NULL OR ch.is_scam = 0)
     ORDER BY ch.trending_score DESC, ch.rating_average DESC, ch.rating_count DESC, ch.join_clicks DESC
     LIMIT ? OFFSET ?
     `,
@@ -327,6 +346,18 @@ export async function searchChannels(env: Env, options: ChannelSearchOptions): P
   return result.results ?? [];
 }
 
+export async function updateTrendingScore(env: Env, channelId: number): Promise<void> {
+  await env.DB.prepare(`
+    UPDATE channels SET trending_score = (
+      (COALESCE(clicks, 0) * 3) + 
+      ((SELECT COUNT(DISTINCT telegram_id) FROM saved_channels WHERE channel_id = channels.id) * 5) + 
+      (COALESCE(rating_average, 0) * 10) + 
+      COALESCE(views, 0)
+    )
+    WHERE id = ?
+  `).bind(channelId).run();
+}
+
 export async function incrementChannelClicks(
   env: Env,
   channelId: number,
@@ -336,7 +367,7 @@ export async function incrementChannelClicks(
     `
     UPDATE channels
     SET join_clicks = join_clicks + 1,
-      trending_score = (((join_clicks + 1) * 2.0) + (rating_average * 10.0) + (rating_count * 2.0) - (reports * 10.0)),
+      clicks = clicks + 1,
       updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
     `,
@@ -344,11 +375,32 @@ export async function incrementChannelClicks(
     .bind(channelId)
     .run();
 
+  await updateTrendingScore(env, channelId);
+
   if (telegramId) {
     await env.DB.prepare("INSERT INTO clicks (telegram_id, channel_id) VALUES (?, ?)")
       .bind(telegramId, channelId)
       .run();
+    await logUserActivity(env, telegramId, channelId, 'click');
   }
+}
+
+export async function incrementChannelViews(env: Env, channelId: number, telegramId?: number): Promise<void> {
+  await env.DB.prepare(
+    `UPDATE channels SET views = views + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
+  ).bind(channelId).run();
+  
+  await updateTrendingScore(env, channelId);
+
+  if (telegramId) {
+    await logUserActivity(env, telegramId, channelId, 'view');
+  }
+}
+
+export async function logUserActivity(env: Env, userId: number, channelId: number, action: string): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO user_activity (user_id, channel_id, action) VALUES (?, ?, ?)`
+  ).bind(userId, channelId, action).run();
 }
 
 export async function rateChannel(
@@ -382,18 +434,15 @@ export async function rateChannel(
     SET rating_total = rating_total + ?,
       rating_count = rating_count + 1,
       rating_average = ROUND(((rating_total + ?) * 1.0) / (rating_count + 1), 1),
-      trending_score = (
-        (join_clicks * 2.0)
-        + (ROUND(((rating_total + ?) * 1.0) / (rating_count + 1), 1) * 10.0)
-        + ((rating_count + 1) * 2.0)
-        - (reports * 10.0)
-      ),
       updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
     `,
   )
-    .bind(rating, rating, rating, channelId)
+    .bind(rating, rating, channelId)
     .run();
+
+  await updateTrendingScore(env, channelId);
+  await logUserActivity(env, telegramId, channelId, 'rate');
 
   return "created";
 }
@@ -428,6 +477,11 @@ export async function saveChannel(
     .bind(telegramId, channelId)
     .run();
 
+  if (result.meta.changes > 0) {
+    await updateTrendingScore(env, channelId);
+    await logUserActivity(env, telegramId, channelId, 'save');
+  }
+
   return result.meta.changes === 0 ? "exists" : "created";
 }
 
@@ -441,6 +495,10 @@ export async function removeSavedChannel(
   )
     .bind(telegramId, channelId)
     .run();
+
+  if (result.meta.changes > 0) {
+    await updateTrendingScore(env, channelId);
+  }
 
   return result.meta.changes > 0;
 }
@@ -909,10 +967,11 @@ export async function setChannelStatus(
     return null;
   }
 
+  const qualityStatusUpdate = status === 'approved' ? `, quality_status = 'approved'` : '';
   await env.DB.prepare(
     `
     UPDATE channels
-    SET status = ?, updated_at = CURRENT_TIMESTAMP
+    SET status = ?, updated_at = CURRENT_TIMESTAMP${qualityStatusUpdate}
     WHERE id = ?
     `,
   )
@@ -1167,13 +1226,14 @@ export async function createReport(
         `
         UPDATE channels
         SET reports = reports + 1,
-          status = CASE WHEN reports + 1 >= 5 THEN 'hidden' ELSE status END,
-          trending_score = ((join_clicks * 2.0) + (rating_average * 10.0) + (rating_count * 2.0) - ((reports + 1) * 10.0)),
+          status = CASE WHEN reports + 1 >= 3 THEN 'hidden' ELSE status END,
           updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
         `,
       ).bind(channelId),
     ]);
+
+    await updateTrendingScore(env, channelId);
 
     const channel = await getAdminChannel(env, channelId);
     return {
@@ -1235,6 +1295,9 @@ export async function getAdminStats(env: Env): Promise<AdminStats> {
     totalRatings,
     totalClicks,
     totalReports,
+    ownershipVerifiedChannels,
+    scamChannels,
+    totalViews
   ] = await Promise.all([
     countRows(env, "users"),
     countRows(env, "channels"),
@@ -1245,7 +1308,10 @@ export async function getAdminStats(env: Env): Promise<AdminStats> {
     countRows(env, "saved_channels"),
     sumColumn(env, "channels", "rating_count"),
     sumColumn(env, "channels", "join_clicks"),
-    sumColumn(env, "channels", "reports"),
+    countRows(env, "reports"),
+    countRows(env, "channels", "ownership_verified = 1"),
+    countRows(env, "channels", "is_scam = 1"),
+    sumColumn(env, "channels", "views"),
   ]);
 
   return {
@@ -1259,7 +1325,10 @@ export async function getAdminStats(env: Env): Promise<AdminStats> {
     totalRatings,
     totalClicks,
     totalReports,
-  };
+    ownershipVerifiedChannels,
+    scamChannels,
+    totalViews
+  } as AdminStats & { ownershipVerifiedChannels: number; scamChannels: number; totalViews: number; };
 }
 
 export async function listBroadcastUsers(env: Env): Promise<number[]> {
