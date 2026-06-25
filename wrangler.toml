@@ -20,8 +20,8 @@ migrations_dir = "migrations"
 # Keep BOT_TOKEN and WEBHOOK_SECRET as Cloudflare secrets
 
 [vars]
-ADMIN_IDS = "6059191947"
-ADMIN_REVIEW_CHANNEL_ID = "-1004352856502"
+ADMIN_IDS = ""
+ADMIN_REVIEW_CHANNEL_ID = ""
 FORCE_SUB_CHANNEL = "@Nex_bots"
 FORCE_SUB_LINK = "https://t.me/Nex_bots"
 PUBLIC_POST_CHANNEL = "-1004322240719"
