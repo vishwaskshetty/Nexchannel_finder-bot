@@ -273,19 +273,23 @@ export async function sendOrEdit(
   text: string,
   options: MessageOptions = {},
 ): Promise<TelegramApiResponse<TelegramMessage | true>> {
-  // Telegram can refuse edits when the original message is too old or unchanged.
-  // Falling back to sendMessage keeps the bot friendly instead of failing silently.
+  const finalOptions = { ...options, parse_mode: "HTML" as const };
+  
   if (messageId) {
-    const edited = await telegram.editMessageText(chatId, messageId, text, options);
+    const edited = await telegram.editMessageText(chatId, messageId, text, finalOptions);
     if (edited.ok) {
       return edited;
     }
 
-    if (edited.description?.toLowerCase().includes("message is not modified")) {
+    const desc = edited.description?.toLowerCase() || "";
+    if (desc.includes("message is not modified")) {
       return { ok: true, result: true };
     }
 
-    console.warn("Could not edit message, sending a new one instead.", edited);
+    if (!desc.includes("there is no text in the message to edit")) {
+       console.warn("Could not edit message (not modified/no text), sending a new one instead.", edited);
+    }
+    
     try {
       await telegram.call("deleteMessage", { chat_id: String(chatId), message_id: messageId });
     } catch (e) {
@@ -293,7 +297,7 @@ export async function sendOrEdit(
     }
   }
 
-  const sent = await telegram.sendMessage(chatId, text, options);
+  const sent = await telegram.sendMessage(chatId, text, finalOptions);
   if (!sent.ok) {
     console.error("Telegram API sendMessage failed:", sent);
   }
@@ -301,11 +305,11 @@ export async function sendOrEdit(
 }
 
 export async function safeEditOrSend(
+  env: Env,
   chatId: ChatId,
   messageId: number | undefined,
   text: string,
-  keyboard: TelegramInlineKeyboardMarkup | undefined,
-  env: Env,
+  keyboard?: TelegramInlineKeyboardMarkup,
 ): Promise<TelegramApiResponse<TelegramMessage | true>> {
   return sendOrEdit(new TelegramClient(env.BOT_TOKEN), chatId, messageId, text, {
     reply_markup: keyboard,

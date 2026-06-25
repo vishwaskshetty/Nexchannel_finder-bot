@@ -25,6 +25,8 @@ import {
   submitNavKeyboard,
   submitStartKeyboard,
   submitTypeKeyboard,
+  submitConfirmKeyboard,
+  submissionPreviewText,
 } from "../ui";
 import { categorySlugFromKey } from "../categoryKeys";
 
@@ -134,6 +136,10 @@ export async function handleSubmitText(
   }
 }
 
+export function generateVerificationCode(): string {
+  return `NEX-${Math.floor(10000 + Math.random() * 90000)}`;
+}
+
 export async function handleSubmitCallback(
   ctx: BotContext,
   data: string,
@@ -152,6 +158,14 @@ export async function handleSubmitCallback(
     data = "s:t:p";
   } else if (data === "submit_type:private") {
     data = "s:t:r";
+  } else if (data === "submit_type:bot") {
+    data = "s:t:b";
+  } else if (data === "submit_confirm") {
+    await handleSubmitConfirm(ctx, chatId, messageId, userId);
+    return;
+  } else if (data === "submit_edit") {
+    await handleSubmitBack(ctx, chatId, messageId, userId);
+    return;
   } else if (data.startsWith("submit_category:")) {
     data = `s:c:${data.slice("submit_category:".length)}`;
   } else if (data.startsWith("submit_language:")) {
@@ -181,6 +195,11 @@ export async function handleSubmitCallback(
     return;
   }
 
+  if (data === "s:t:b") {
+    await handleChannelTypeStep(ctx, chatId, messageId, userId, "bot");
+    return;
+  }
+
   if (data.startsWith("s:c:")) {
     await handleCategoryStep(ctx, chatId, messageId, userId, data.slice("s:c:".length));
     return;
@@ -203,11 +222,20 @@ async function handleChannelTypeStep(
     channel_type: type,
   });
 
+  let prompt = "";
+  if (type === "private") {
+    prompt = PRIVATE_CHANNEL_RULE_TEXT;
+  } else if (type === "bot") {
+    prompt = botChannelPromptText();
+  } else {
+    prompt = publicChannelPromptText();
+  }
+
   await sendOrEdit(
     ctx.telegram,
     chatId,
     messageId,
-    type === "private" ? PRIVATE_CHANNEL_RULE_TEXT : publicChannelPromptText(),
+    prompt,
     {
       reply_markup: submitNavKeyboard("s:b"),
       disable_web_page_preview: true,
@@ -229,12 +257,16 @@ async function handleChannelInputStep(
   }
 
   const normalized =
-    channelType === "private" ? normalizePrivateInviteLink(value) : normalizePublicIdentifier(value);
+    channelType === "private" ? normalizePrivateInviteLink(value) : (channelType === "bot" ? normalizeBotUsername(value) : normalizePublicIdentifier(value));
 
   if (!normalized) {
+    let invalidText = invalidPublicText();
+    if (channelType === "private") invalidText = invalidPrivateText();
+    if (channelType === "bot") invalidText = invalidBotText();
+    
     await ctx.telegram.sendMessage(
       chatId,
-      channelType === "private" ? invalidPrivateText() : invalidPublicText(),
+      invalidText,
       {
         reply_markup: submitNavKeyboard("s:b"),
         disable_web_page_preview: true,
@@ -398,9 +430,7 @@ async function handleAdminUsernameStep(
   draft: SubmissionDraft,
   adminUsername: string,
 ): Promise<void> {
-  if (!message.from) {
-    return;
-  }
+  if (!message.from) return;
 
   const safeAdminUsername = normalizeAdminUsername(adminUsername);
   if (!safeAdminUsername) {
@@ -424,27 +454,41 @@ async function handleAdminUsernameStep(
     return;
   }
 
+  const verificationCode = generateVerificationCode();
+
+  await updateSubmissionDraft(ctx.env, message.from.id, {
+    step: "preview",
+    admin_username: safeAdminUsername,
+    verification_code: verificationCode,
+  });
+
+  const preview = submissionPreviewText(
+    { ...finalDraft, admin_username: safeAdminUsername },
+    verificationCode
+  );
+
+  await ctx.telegram.sendMessage(message.chat.id, preview, {
+    reply_markup: submitConfirmKeyboard(),
+    disable_web_page_preview: true,
+    parse_mode: "HTML",
+  });
+}
+
+async function handleSubmitConfirm(
+  ctx: BotContext,
+  chatId: number,
+  messageId: number | undefined,
+  userId: number
+): Promise<void> {
+  const finalDraft = await getSubmissionDraft(ctx.env, userId);
+  if (!finalDraft || finalDraft.step !== "preview") {
+    await handleSubmitStart(ctx, chatId, userId);
+    return;
+  }
+
   const isPrivate = finalDraft.channel_type === "private";
   const inviteLink = (finalDraft.invite_link ?? finalDraft.channel_username)?.trim() ?? "";
   const publicIdentifier = (finalDraft.channel_username ?? finalDraft.channel_link)?.trim() ?? "";
-
-  if (isPrivate) {
-    if (!inviteLink) {
-      await updateSubmissionDraft(ctx.env, message.from.id, { step: "channel_input" });
-      await ctx.telegram.sendMessage(message.chat.id, PRIVATE_CHANNEL_RULE_TEXT, {
-        reply_markup: submitNavKeyboard("s:b"),
-        disable_web_page_preview: true,
-      });
-      return;
-    }
-  } else if (!publicIdentifier) {
-    await updateSubmissionDraft(ctx.env, message.from.id, { step: "channel_input" });
-    await ctx.telegram.sendMessage(message.chat.id, publicChannelPromptText(), {
-      reply_markup: submitNavKeyboard("s:b"),
-      disable_web_page_preview: true,
-    });
-    return;
-  }
 
   const safeChannelUsername = isPrivate ? "" : publicIdentifier;
   const safeChannelLink = isPrivate
@@ -453,54 +497,85 @@ async function handleAdminUsernameStep(
   const safeInviteLink = isPrivate ? inviteLink : "";
 
   const submissionId = await createSubmission(ctx.env, {
-    userId: message.from.id,
+    userId: userId,
     channelIdentifier: isPrivate ? safeInviteLink : safeChannelUsername,
     channelUsername: safeChannelUsername,
     channelLink: safeChannelLink,
     inviteLink: safeInviteLink,
-    channelType: finalDraft.channel_type,
-    categorySlug: finalDraft.category,
-    language: finalDraft.language,
-    description: finalDraft.description,
-    tags: finalDraft.tags,
-    adminUsername: safeAdminUsername,
+    channelType: finalDraft.channel_type as ChannelType,
+    categorySlug: finalDraft.category!,
+    language: finalDraft.language!,
+    description: finalDraft.description!,
+    tags: finalDraft.tags!,
+    adminUsername: finalDraft.admin_username!,
   });
-  const verificationCode = await createOwnershipVerification(ctx.env, message.from.id, submissionId);
 
-  await clearSubmissionDraft(ctx.env, message.from.id);
+  const verificationCode = finalDraft.verification_code || generateVerificationCode();
+  
+  await ctx.env.DB.prepare(
+    `
+    UPDATE channels
+    SET verification_code = ?,
+      verification_status = 'pending',
+      verification_created_at = CURRENT_TIMESTAMP,
+      updated_at = CURRENT_TIMESTAMP
+    WHERE id = ? AND owner_telegram_id = ?
+    `
+  ).bind(verificationCode, submissionId, userId).run();
 
-  const category = await findCategoryBySlug(ctx.env, finalDraft.category);
-  const submissionTitle = isPrivate
-    ? "Private Channel"
-    : safeChannelUsername.replace(/^@/, "").replace(/_/g, " ").trim() || safeChannelUsername;
+  await ctx.env.DB.prepare(
+    `
+    INSERT INTO ownership_verifications (
+      telegram_id,
+      channel_id,
+      verification_code,
+      status,
+      method,
+      created_at
+    )
+    VALUES (?, ?, ?, 'pending', 'auto', CURRENT_TIMESTAMP)
+    `
+  ).bind(userId, submissionId, verificationCode).run();
+
+  await clearSubmissionDraft(ctx.env, userId);
+
+  const category = await findCategoryBySlug(ctx.env, finalDraft.category!);
+  let titleStr = "Unknown";
+  if (isPrivate) {
+    titleStr = "Private Channel";
+  } else {
+    titleStr = safeChannelUsername.replace(/^@/, "").replace(/_/g, " ").trim() || safeChannelUsername;
+  }
+  
+  if (finalDraft.channel_type === "bot") titleStr = "Bot: " + titleStr;
 
   const reviewResult = await sendAdminReviewNotification(
     ctx.env,
     ctx.telegram,
     adminSubmissionNotificationText({
       id: submissionId,
-      title: submissionTitle,
-      channel: safeChannelUsername,
-      channelType: finalDraft.channel_type,
-      category: category?.name ?? finalDraft.category,
-      language: finalDraft.language,
-      description: finalDraft.description,
-      tags: finalDraft.tags,
-      adminUsername: safeAdminUsername,
+      title: titleStr,
+      channel: isPrivate ? safeInviteLink : safeChannelUsername,
+      channelType: finalDraft.channel_type as ChannelType,
+      category: category?.name ?? finalDraft.category!,
+      language: finalDraft.language!,
+      description: finalDraft.description!,
+      tags: finalDraft.tags!,
+      adminUsername: finalDraft.admin_username!,
       verificationCode,
     }),
-    adminReviewNotificationKeyboard(submissionId),
+    adminReviewNotificationKeyboard(submissionId, isPrivate ? safeInviteLink : safeChannelLink),
   );
 
   if (reviewResult.ok) {
-    await ctx.telegram.sendMessage(message.chat.id, channelSubmittedText(submissionId), {
+    await sendOrEdit(ctx.telegram, chatId, messageId, channelSubmittedText(submissionId), {
       reply_markup: backHomeKeyboard("menu"),
       disable_web_page_preview: true,
     });
     return;
   }
 
-  await ctx.telegram.sendMessage(message.chat.id, channelSubmittedAdminNotifyFailedText(), {
+  await sendOrEdit(ctx.telegram, chatId, messageId, channelSubmittedAdminNotifyFailedText(), {
     reply_markup: backHomeKeyboard("menu"),
     disable_web_page_preview: true,
   });
@@ -527,11 +602,15 @@ async function handleSubmitBack(
 
   if (draft.step === "category") {
     await updateSubmissionDraft(ctx.env, userId, { step: "channel_input" });
+    let prompt = publicChannelPromptText();
+    if (draft.channel_type === "private") prompt = PRIVATE_CHANNEL_RULE_TEXT;
+    if (draft.channel_type === "bot") prompt = botChannelPromptText();
+    
     await sendOrEdit(
       ctx.telegram,
       chatId,
       messageId,
-      draft.channel_type === "private" ? PRIVATE_CHANNEL_RULE_TEXT : publicChannelPromptText(),
+      prompt,
       {
         reply_markup: submitNavKeyboard("s:b"),
         disable_web_page_preview: true,
@@ -603,6 +682,17 @@ function publicChannelPromptText(): string {
   ].join("\n");
 }
 
+function botChannelPromptText(): string {
+  return [
+    "🤖 Telegram Bot",
+    "",
+    "Send your bot username or link.",
+    "",
+    "@examplebot",
+    "https://t.me/examplebot",
+  ].join("\n");
+}
+
 function normalizePublicIdentifier(value: string): string | null {
   if (isPublicUsername(value)) {
     return value;
@@ -624,6 +714,14 @@ function normalizePublicIdentifier(value: string): string | null {
   }
 
   return isTelegramUsername(path) ? `@${path}` : null;
+}
+
+function normalizeBotUsername(value: string): string | null {
+  const norm = normalizePublicIdentifier(value);
+  if (norm && norm.toLowerCase().endsWith("bot")) {
+    return norm;
+  }
+  return null;
 }
 
 function normalizePrivateInviteLink(value: string): string | null {
@@ -680,5 +778,14 @@ function invalidPrivateText(): string {
     "https://t.me/joinchat/privateInviteCode",
     "",
     "Do not send request-to-join links.",
+  ].join("\n");
+}
+
+function invalidBotText(): string {
+  return [
+    "❌ Invalid bot username.",
+    "",
+    "Must end with 'bot'.",
+    "Example: @examplebot",
   ].join("\n");
 }

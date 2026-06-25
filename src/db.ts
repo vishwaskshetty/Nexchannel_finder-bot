@@ -20,44 +20,44 @@ import type {
   VerificationStatus,
 } from "./types";
 
-const CHANNEL_SELECT = `
+export const CHANNEL_SELECT = `
   ch.id,
   NULL AS category_id,
   cat.name AS category_name,
   cat.slug AS category_slug,
-  ch.owner_telegram_id,
+  COALESCE(ch.owner_telegram_id, ch.owner_user_id, 0) AS owner_telegram_id,
   ch.channel_type,
-  ch.channel_username,
-  ch.channel_link,
-  ch.invite_link,
-  CASE WHEN ch.channel_type = 'public' THEN ch.channel_username ELSE NULL END AS username,
+  COALESCE(ch.channel_username, ch.username, '') AS channel_username,
+  COALESCE(ch.channel_link, '') AS channel_link,
+  COALESCE(ch.invite_link, '') AS invite_link,
+  CASE WHEN ch.channel_type = 'public' THEN COALESCE(ch.channel_username, ch.username, '') ELSE NULL END AS username,
   CASE
-    WHEN ch.channel_type = 'private' THEN ch.invite_link
-    WHEN ch.channel_link IS NOT NULL AND ch.channel_link != '' THEN ch.channel_link
-    WHEN ch.channel_username IS NOT NULL AND ch.channel_username != '' THEN 'https://t.me/' || replace(ch.channel_username, '@', '')
+    WHEN ch.channel_type = 'private' THEN COALESCE(ch.invite_link, '')
+    WHEN COALESCE(ch.channel_link, '') != '' THEN ch.channel_link
+    WHEN COALESCE(ch.channel_username, ch.username, '') != '' THEN 'https://t.me/' || replace(COALESCE(ch.channel_username, ch.username, ''), '@', '')
     ELSE NULL
   END AS link,
-  ch.title,
-  ch.description,
-  ch.category,
-  ch.language,
-  ch.tags,
-  ch.admin_username,
-  ch.status,
+  COALESCE(ch.title, '') AS title,
+  COALESCE(ch.description, '') AS description,
+  COALESCE(ch.category, '') AS category,
+  COALESCE(ch.language, '') AS language,
+  COALESCE(ch.tags, '') AS tags,
+  COALESCE(ch.admin_username, '') AS admin_username,
+  COALESCE(ch.status, 'pending') AS status,
   ch.featured,
-  ch.verified,
-  ch.owner_verified,
-  ch.verification_code,
+  COALESCE(ch.verified, 0) AS verified,
+  COALESCE(ch.owner_verified, ch.ownership_verified, 0) AS owner_verified,
+  COALESCE(ch.verification_code, '') AS verification_code,
   ch.verification_status,
   ch.verification_created_at,
-  ch.join_clicks,
-  ch.join_clicks AS clicks,
-  ch.reports,
-  ch.reports AS reports_count,
-  ch.rating_total,
-  ch.rating_count,
-  ch.rating_average,
-  ch.trending_score,
+  COALESCE(ch.join_clicks, ch.clicks, 0) AS join_clicks,
+  COALESCE(ch.clicks, ch.join_clicks, 0) AS clicks,
+  COALESCE(ch.reports, 0) AS reports,
+  COALESCE(ch.reports, 0) AS reports_count,
+  COALESCE(ch.rating_total, 0) AS rating_total,
+  COALESCE(ch.rating_count, 0) AS rating_count,
+  COALESCE(ch.rating_average, ch.rating, 0) AS rating_average,
+  COALESCE(ch.trending_score, 0) AS trending_score,
   ch.source_name,
   ch.source_url,
   ch.source_rank,
@@ -65,16 +65,60 @@ const CHANNEL_SELECT = `
   ch.import_batch_id,
   ch.last_imported_at,
   ch.is_public_listing,
-  ch.ownership_verified,
-  ch.owner_user_id,
+  COALESCE(ch.ownership_verified, ch.owner_verified, 0) AS ownership_verified,
+  COALESCE(ch.owner_user_id, ch.owner_telegram_id, 0) AS owner_user_id,
+  COALESCE(ch.submitted_by, ch.owner_telegram_id, 0) AS submitted_by,
   ch.verified_at,
   ch.quality_status,
   ch.admin_notes,
-  ch.is_scam,
+  COALESCE(ch.is_scam, 0) AS is_scam,
   ch.last_checked_at,
   ch.created_at,
   ch.updated_at
 `;
+
+let lastErrorCache = "";
+
+export function getLastError(): string {
+  return lastErrorCache || "No recent errors.";
+}
+
+export function storeLastError(err: any): void {
+  lastErrorCache = `[${new Date().toISOString()}] ${err instanceof Error ? err.stack || err.message : String(err)}`;
+}
+
+export async function ensureSchema(env: Env): Promise<void> {
+  try {
+    const columnsToAdd = [
+      "username TEXT",
+      "views INTEGER DEFAULT 0",
+      "clicks INTEGER DEFAULT 0",
+      "rating REAL DEFAULT 0",
+      "ownership_verified INTEGER DEFAULT 0",
+      "owner_user_id INTEGER",
+      "submitted_by INTEGER",
+      "verified_at DATETIME",
+      "is_scam INTEGER DEFAULT 0",
+      "quality_status TEXT DEFAULT 'unchecked'",
+      "admin_notes TEXT",
+      "last_checked_at DATETIME"
+    ];
+
+    for (const colDef of columnsToAdd) {
+      try {
+        await env.DB.prepare(`ALTER TABLE channels ADD COLUMN ${colDef}`).run();
+      } catch (err: any) {
+        // Ignore duplicate column errors.
+        if (!err.message?.includes("duplicate column")) {
+          console.error(`Failed to add column ${colDef}:`, err);
+        }
+      }
+    }
+  } catch (err) {
+    storeLastError(err);
+    console.error("ensureSchema failed:", err);
+  }
+}
 
 export async function testDatabase(env: Env): Promise<{ ok: number } | null> {
   return env.DB.prepare("SELECT 1 as ok;").bind().first<{ ok: number }>();
@@ -349,9 +393,9 @@ export async function searchChannels(env: Env, options: ChannelSearchOptions): P
 export async function updateTrendingScore(env: Env, channelId: number): Promise<void> {
   await env.DB.prepare(`
     UPDATE channels SET trending_score = (
-      (COALESCE(clicks, 0) * 3) + 
+      (COALESCE(clicks, COALESCE(join_clicks, 0)) * 3) + 
       ((SELECT COUNT(DISTINCT telegram_id) FROM saved_channels WHERE channel_id = channels.id) * 5) + 
-      (COALESCE(rating_average, 0) * 10) + 
+      (COALESCE(rating, COALESCE(rating_average, 0)) * 10) + 
       COALESCE(views, 0)
     )
     WHERE id = ?
@@ -574,14 +618,20 @@ export async function listWeeklyLeaderboard(
 export async function listWeeklyLeaderboardScore(env: Env, limit = 10): Promise<any[]> {
   const result = await env.DB.prepare(`
     SELECT
-      c.*,
+      ${CHANNEL_SELECT},
       COUNT(DISTINCT s.telegram_id) AS saves,
-      ((c.clicks * 3) + (COUNT(DISTINCT s.telegram_id) * 5) + (c.rating * 10) + c.views) AS trending_score
-    FROM channels c
-    LEFT JOIN saved_channels s ON s.channel_id = c.id
-    WHERE c.status = 'approved'
-      AND (c.is_scam IS NULL OR c.is_scam = 0)
-    GROUP BY c.id
+      (
+        (COALESCE(ch.join_clicks, ch.clicks, 0) * 3) + 
+        (COUNT(DISTINCT s.telegram_id) * 5) + 
+        (COALESCE(ch.rating_average, ch.rating, 0) * 10) + 
+        COALESCE(ch.views, 0)
+      ) AS trending_score
+    FROM channels ch
+    LEFT JOIN categories cat ON cat.slug = ch.category
+    LEFT JOIN saved_channels s ON s.channel_id = ch.id
+    WHERE ch.status = 'approved'
+      AND (ch.is_scam IS NULL OR ch.is_scam = 0)
+    GROUP BY ch.id
     ORDER BY trending_score DESC
     LIMIT ?
   `).bind(limit).all();
@@ -591,12 +641,13 @@ export async function listWeeklyLeaderboardScore(env: Env, limit = 10): Promise<
 export async function listSubmitterLeaderboard(env: Env, limit = 10): Promise<any[]> {
   const result = await env.DB.prepare(`
     SELECT
-      submitted_by,
+      COALESCE(submitted_by, owner_telegram_id, owner_user_id) as submitted_by,
       COUNT(*) AS approved_count
     FROM channels
     WHERE status = 'approved'
-      AND submitted_by IS NOT NULL
-    GROUP BY submitted_by
+      AND (is_scam IS NULL OR is_scam = 0)
+      AND COALESCE(submitted_by, owner_telegram_id, owner_user_id) IS NOT NULL
+    GROUP BY COALESCE(submitted_by, owner_telegram_id, owner_user_id)
     ORDER BY approved_count DESC
     LIMIT ?
   `).bind(limit).all();
@@ -1499,7 +1550,7 @@ async function sumColumn(
 
 function searchOrderBy(sort: SearchSort): string {
   switch (sort) {
-    case "rating":
+    case "votes":
       return "ch.rating_average DESC, ch.rating_count DESC, ch.trending_score DESC, ch.created_at DESC";
     case "clicks":
       return "ch.join_clicks DESC, ch.trending_score DESC, ch.created_at DESC";

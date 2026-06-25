@@ -11,6 +11,13 @@ import type {
 import { categoryKeyFromSlug, CATEGORIES } from "./config/categories";
 import { LANGUAGES } from "./config/languages";
 
+export function escapeHtml(text = ""): string {
+  return String(text)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
 export const TEXT = {
   English: {
     mainMenu: "Main Menu",
@@ -135,9 +142,15 @@ type ChannelCardInput = Channel & {
   category?: string | null;
   language?: string | null;
   join_clicks?: number | null;
+  clicks?: number | null;
+  views?: number | null;
   trending_score?: number | null;
   rating_average?: number | null;
+  rating?: number | null;
   rating_count?: number | null;
+  ownership_verified?: number | boolean | null;
+  owner_verified?: number | boolean | null;
+  verification_code?: string | null;
 };
 
 interface SearchViewState {
@@ -151,6 +164,8 @@ interface ChannelActionKeyboardOptions {
   backCallback?: string;
   homeCallback?: string;
   isSaved?: boolean;
+  hideReport?: boolean;
+  hideBack?: boolean;
 }
 
 export interface LeaderboardSections {
@@ -233,32 +248,9 @@ export const SUCCESS_TEXT = "✅ Done successfully!";
 export const ERROR_TEXT = "❌ Something went wrong. Please try again.";
 
 export const SUBMIT_INTRO_TEXT = [
-  "➕ 𝗔𝗗𝗗 𝗖𝗛𝗔𝗡𝗡𝗘𝗟",
+  "<b>➕ Submit Channel</b>",
   "",
-  "Send your channel username or link.",
-  "",
-  "Examples:",
-  "@examplechannel",
-  "https://t.me/examplechannel",
-  "https://t.me/+privateInviteCode",
-  "",
-  "Rules:",
-  "✅ Public channels allowed",
-  "✅ Private channels allowed",
-  "✅ Useful content only",
-  "✅ Admin approval required",
-  "✅ Private links must be auto-join / auto-approve",
-  "",
-  "Not allowed:",
-  "🚫 Adult content",
-  "🚫 Scam earning",
-  "🚫 Exam leaks",
-  "🚫 Copyrighted PDFs",
-  "🚫 Hate or illegal content",
-  "🚫 Broken links",
-  "🚫 Private request-to-join links",
-  "",
-  "Choose the channel type below.",
+  "What type of listing do you want to submit?",
 ].join("\n");
 
 
@@ -356,8 +348,13 @@ export function submitTypeKeyboard(): TelegramInlineKeyboardMarkup {
   return {
     inline_keyboard: [
       [
-        { text: "🌍 Public", callback_data: "submit_type:public" },
-        { text: "🔐 Private", callback_data: "submit_type:private" },
+        { text: "📢 Public Channel / Group", callback_data: "submit_type:public" },
+      ],
+      [
+        { text: "🔒 Private Invite Link", callback_data: "submit_type:private" },
+      ],
+      [
+        { text: "🤖 Telegram Bot", callback_data: "submit_type:bot" },
       ],
       ...submitNavKeyboard("home").inline_keyboard,
     ],
@@ -394,6 +391,37 @@ export function submitNavKeyboard(backCallback = "s:b"): TelegramInlineKeyboardM
       backHomeRow(backCallback),
     ],
   };
+}
+
+export function submitConfirmKeyboard(): TelegramInlineKeyboardMarkup {
+  return {
+    inline_keyboard: [
+      [{ text: "✅ Submit Now", callback_data: "submit_confirm" }],
+      [{ text: "✏️ Edit", callback_data: "submit_edit" }],
+      [{ text: "❌ Cancel", callback_data: "submit_cancel" }]
+    ]
+  };
+}
+
+export function submissionPreviewText(draft: any, verificationCode: string): string {
+  const isPrivate = draft.channel_type === "private";
+  const link = isPrivate ? (draft.invite_link || draft.channel_username) : (draft.channel_username || draft.channel_link);
+  return [
+    "<b>📋 Submission Preview</b>",
+    "",
+    `📢 <b>Title:</b> ${escapeHtml(draft.channel_username || draft.channel_link || "Pending")}`,
+    `🔗 <b>Link:</b> ${escapeHtml(link)}`,
+    `📌 <b>Type:</b> ${escapeHtml(draft.channel_type)}`,
+    `📂 <b>Category:</b> ${escapeHtml(draft.category)}`,
+    `🌐 <b>Language:</b> ${escapeHtml(draft.language)}`,
+    `📝 <b>Description:</b> ${escapeHtml(draft.description)}`,
+    `🏷 <b>Tags:</b> ${escapeHtml(draft.tags)}`,
+    `👤 <b>Owner/Admin:</b> ${escapeHtml(draft.admin_username)}`,
+    "",
+    `<b>🔐 Verification:</b> <code>${verificationCode}</code>`,
+    "",
+    "This code will be used if admin asks for ownership verification."
+  ].join("\n");
 }
 
 export function categoriesText(categories: Category[]): string {
@@ -512,21 +540,27 @@ export function channelListKeyboard(
   return { inline_keyboard: rows };
 }
 
-export function formatChannelDetails(channel: ChannelCardInput): string {
-  const category = categoryLabel(channel);
-  const language = channel.language ?? "Mixed";
-  const rating = formatRating(channel.rating_average ?? 0);
-  const clicks = channel.join_clicks ?? channel.clicks ?? 0;
+export function formatChannelDetails(channel: ChannelCardInput, options?: { hideSearchHeader?: boolean }): string {
+  const category = escapeHtml(channel.category_name || categoryLabel(channel) || "Unknown");
+  const language = escapeHtml(channel.language || "Mixed");
+  const ratingAvg = channel.rating || channel.rating_average || 0;
+  const rating = formatRating(ratingAvg);
+  const clicks = channel.clicks ?? channel.join_clicks ?? 0;
   const views = channel.views ?? 0;
-  const description = channel.description?.trim() || "No description added yet.";
+  const description = escapeHtml(channel.description?.trim() || "No description added yet.");
   
-  const verifiedIcon = channel.verified || channel.ownership_verified ? " ✅" : "";
-  const usernameLine = channel.channel_username ? `🔗 <b>Username:</b> ${channel.channel_username}` : `🔗 <b>Link:</b> ${channel.channel_link || channel.invite_link || 'Private'}`;
+  const verifiedIcon = (channel.verified === 1) ? " ✅" : "";
+  const ownershipIcon = (channel.ownership_verified === 1 || channel.owner_verified === 1) ? " 🔐" : "";
+  const badges = verifiedIcon + ownershipIcon;
+  
+  const usernameLine = channel.channel_username 
+    ? `🔗 <b>Username/Link:</b> @${escapeHtml(channel.channel_username.replace(/^@/, ''))}` 
+    : `🔗 <b>Username/Link:</b> ${escapeHtml(channel.channel_link || channel.invite_link || 'Private')}`;
 
   const lines: Array<string | null> = [
-    "<b>🔍 Search Result</b>",
-    "",
-    `📢 <b>Channel:</b> ${channel.title}${verifiedIcon}`,
+    options?.hideSearchHeader ? null : "<b>🔍 Search Result</b>",
+    options?.hideSearchHeader ? null : "",
+    `📢 <b>Channel:</b> ${escapeHtml(channel.title || "Unknown")}${badges}`,
     usernameLine,
     `📂 <b>Category:</b> ${category}`,
     `🌐 <b>Language:</b> ${language}`,
@@ -556,8 +590,13 @@ export function channelActionKeyboard(
   const backCallback = options.backCallback ?? "home";
   const homeCallback = options.homeCallback ?? "home";
 
-  if (joinLink) {
-    rows.push([{ text: "🔗 Open Channel", url: joinLink }]);
+  const btnLabel = (channel.channel_type === "private") 
+    ? "🔗 Open Private Link" 
+    : (channel.channel_type === "bot") ? "🤖 Open Bot" : "🔗 Open Channel";
+  if (channel.id) {
+    rows.push([{ text: btnLabel, callback_data: `open:${channel.id}` }]);
+  } else if (joinLink) {
+    rows.push([{ text: btnLabel, url: joinLink }]);
   }
 
   rows.push(
@@ -568,13 +607,25 @@ export function channelActionKeyboard(
       },
       { text: "⭐ Rate", callback_data: `rate:${channel.id}` },
       { text: "🔎 Similar", callback_data: `similar:${channel.id}` },
-    ],
-    [
+    ]
+  );
+  
+  if (options.hideReport) {
+    rows.push([
+      { text: "📊 Analytics", callback_data: `analytics:${channel.id}` }
+    ]);
+  } else {
+    rows.push([
       { text: "📊 Analytics", callback_data: `analytics:${channel.id}` },
       { text: "🚫 Report", callback_data: `report:${channel.id}` },
-    ],
-    backHomeRow(backCallback, homeCallback),
-  );
+    ]);
+  }
+  
+  if (options.hideBack) {
+    rows.push([{ text: "🏠 Home", callback_data: homeCallback }]);
+  } else {
+    rows.push(backHomeRow(backCallback, homeCallback));
+  }
 
   return { inline_keyboard: rows };
 }
@@ -1201,7 +1252,7 @@ export function formatRecommendationText(channel: Channel): string {
     "",
     `Based on your recent activity, you might like this channel:`,
     "",
-    formatChannelDetails(channel)
+    formatChannelDetails(channel, { hideSearchHeader: true })
   ].join("\n");
 }
 
@@ -1504,30 +1555,36 @@ export function submissionDetailsText(submission: Submission): string {
     .join("\n");
 }
 
-export function adminReviewNotificationKeyboard(channelId: number): TelegramInlineKeyboardMarkup {
-  return {
+export function adminReviewNotificationKeyboard(channelId: number, link?: string): TelegramInlineKeyboardMarkup {
+  const keyboard: TelegramInlineKeyboardMarkup = {
     inline_keyboard: [
       [
         { text: "✅ Approve", callback_data: `admin_approve:${channelId}` },
         { text: "❌ Reject", callback_data: `admin_reject:${channelId}` },
       ],
       [
-        { text: "🚫 Hide", callback_data: `admin_hide:${channelId}` },
-        { text: "⭐ Verify", callback_data: `admin_verify:${channelId}` },
+        { text: "🚫 Mark Scam", callback_data: `admin_scam:${channelId}` },
+        { text: "⭐ Ask Verify", callback_data: `admin_verify:${channelId}` },
       ],
     ],
   };
+  
+  if (link) {
+    keyboard.inline_keyboard.unshift([{ text: "🔗 Open Submitted Link", url: link }]);
+  }
+  
+  return keyboard;
 }
 
-export function submissionReviewKeyboard(submissionId: number): TelegramInlineKeyboardMarkup {
-  return adminReviewNotificationKeyboard(submissionId);
+export function submissionReviewKeyboard(submissionId: number, link?: string): TelegramInlineKeyboardMarkup {
+  return adminReviewNotificationKeyboard(submissionId, link);
 }
 
 export function adminSubmissionNotificationText(data: {
   id: number;
   title: string;
   channel: string;
-  channelType: "public" | "private";
+  channelType: "public" | "private" | "bot";
   category: string;
   language: string;
   description: string;
@@ -1654,8 +1711,8 @@ function searchFilterSummary(state: SearchViewState): string {
 
 function searchSortLabel(sort: SearchSort): string {
   switch (sort) {
-    case "rating":
-      return "Top Rated";
+    case "votes":
+      return "Most Voted";
     case "clicks":
       return "Most Clicked";
     case "newest":
@@ -1668,11 +1725,11 @@ function searchSortLabel(sort: SearchSort): string {
 
 function myChannelSummary(channel: Channel): string {
   return [
-    `📢 ${channel.title}${verifiedBadge(channel)}`,
+    `📢 <b>${escapeHtml(channel.title)}</b>${verifiedBadge(channel)}`,
     `🆔 Channel ID: ${channel.id}`,
-    `🔗 ${channelDisplayLabel(channel)}`,
-    `📂 Category: ${categoryLabel(channel)}`,
-    `🌍 Language: ${channel.language ?? "Mixed"}`,
+    `🔗 ${escapeHtml(channelDisplayLabel(channel))}`,
+    `📂 Category: ${escapeHtml(categoryLabel(channel))}`,
+    `🌍 Language: ${escapeHtml(channel.language ?? "Mixed")}`,
     `✅ Status: ${capitalize(channel.status)}`,
     `⭐ Rating: ${formatRating(channel.rating_average ?? 0)} / 5`,
     `👥 Total Ratings: ${formatNumber(channel.rating_count ?? 0)}`,
@@ -1683,18 +1740,18 @@ function myChannelSummary(channel: Channel): string {
 
 function channelListLine(channel: Channel, number: number): string {
   return [
-    `${KEYCAP_NUMBERS[number - 1] ?? `${number}.`} ${unicodeBold(channel.title)}${verifiedBadge(channel)}`,
+    `${KEYCAP_NUMBERS[number - 1] ?? `${number}.`} <b>${escapeHtml(channel.title)}</b>${verifiedBadge(channel)}`,
     `🆔 ID: ${channel.id}`,
-    `📂 ${categoryLabel(channel)} • 🌍 ${channel.language ?? "Mixed"}`,
+    `📂 ${escapeHtml(categoryLabel(channel))} • 🌍 ${escapeHtml(channel.language ?? "Mixed")}`,
     `⭐ ${formatRating(channel.rating_average ?? 0)} / 5 • 👀 ${formatNumber(channel.join_clicks ?? channel.clicks ?? 0)} clicks`,
   ].join("\n");
 }
 
 function savedChannelLine(channel: Channel): string {
   return [
-    `📢 ${channel.title}${verifiedBadge(channel)}`,
+    `📢 <b>${escapeHtml(channel.title)}</b>${verifiedBadge(channel)}`,
     `🆔 ID: ${channel.id}`,
-    `📂 ${categoryLabel(channel)} • 🌍 ${channel.language ?? "Mixed"}`,
+    `📂 ${escapeHtml(categoryLabel(channel))} • 🌍 ${escapeHtml(channel.language ?? "Mixed")}`,
     `⭐ ${formatRating(channel.rating_average ?? 0)} / 5 • 👀 ${formatNumber(channel.join_clicks ?? channel.clicks ?? 0)} clicks`,
   ].join("\n");
 }
@@ -1721,7 +1778,7 @@ function leaderboardChannelLine(channel: Channel, rank: number): string {
     : channel.rating_average ?? 0;
 
   return [
-    `${medal} ${rank}. ${channel.title}${verifiedBadge(channel)}`,
+    `${medal} <b>${escapeHtml(channel.title)}</b>${verifiedBadge(channel)}`,
     `🆔 ID: ${channel.id}`,
     `⭐ ${formatRating(rating)} / 5 • 👀 ${formatNumber(weeklyClicks)} clicks`,
   ].join("\n");
@@ -1733,9 +1790,9 @@ function weeklyPostChannelBlock(channel: Channel & { saves?: number, trending_sc
   const saves = channel.saves ?? 0;
   const rating = channel.rating_average ?? 0;
   return [
-    `${medals[rank - 1] ?? "🏅"} ${unicodeBold(channel.title)} (${channelDisplayLabel(channel)})`,
+    `${medals[rank - 1] ?? "🏅"} <b>${escapeHtml(channel.title)}</b> (${escapeHtml(channelDisplayLabel(channel))})`,
     `🆔 ID: ${channel.id}`,
-    `📂 ${categoryLabel(channel)} • 🌍 ${channel.language ?? "Mixed"}`,
+    `📂 ${escapeHtml(categoryLabel(channel))} • 🌍 ${escapeHtml(channel.language ?? "Mixed")}`,
     `💾 Saves: ${formatNumber(saves)} • ⭐ Rating: ${formatRating(rating)}/5`,
     `🔥 Trending Score: ${formatNumber(score)}`,
   ].join("\n");
@@ -1757,7 +1814,7 @@ export function submitterLeaderboardText(submitters: any[]): string {
 }
 
 function adminListLine(channel: Channel): string {
-  return `🆔 ${channel.id} • ${channel.title}${verifiedBadge(channel)} • ${capitalize(channel.status)} • ${categoryLabel(channel)}`;
+  return `🆔 ${channel.id} • <b>${escapeHtml(channel.title)}</b>${verifiedBadge(channel)} • ${capitalize(channel.status)} • ${escapeHtml(categoryLabel(channel))}`;
 }
 
 function backHomeRow(backCallback = "home", homeCallback = "home"): KeyboardRows[number] {

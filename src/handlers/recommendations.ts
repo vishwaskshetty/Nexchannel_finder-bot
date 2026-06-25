@@ -8,12 +8,14 @@ export async function handleRecommendationsCallback(
   messageId: number | undefined,
   userId: number
 ): Promise<void> {
+  const { CHANNEL_SELECT } = await import("../db");
   const result = await ctx.env.DB.prepare(`
-    SELECT ch.* 
+    SELECT ${CHANNEL_SELECT}
     FROM channels ch
+    LEFT JOIN categories cat ON cat.slug = ch.category
     WHERE ch.status = 'approved' AND (ch.is_scam IS NULL OR ch.is_scam = 0)
     AND ch.id NOT IN (SELECT channel_id FROM saved_channels WHERE telegram_id = ?)
-    ORDER BY ch.trending_score DESC
+    ORDER BY COALESCE(ch.trending_score, 0) DESC
     LIMIT 1
   `).bind(userId).first<Channel>();
 
@@ -40,10 +42,13 @@ export async function handleRecommendationsCallback(
     messageId,
     formatRecommendationText(result),
     {
+      parse_mode: "HTML",
       reply_markup: channelActionKeyboard(result, {
         isSaved,
         backCallback: "home",
-        homeCallback: "home"
+        homeCallback: "home",
+        hideReport: true,
+        hideBack: true
       }),
       disable_web_page_preview: true
     }

@@ -144,14 +144,13 @@ export default {
       }
 
       const secretHeader = request.headers.get("x-telegram-bot-api-secret-token");
-      if (env.WEBHOOK_SECRET && !(await secretsEqual(secretHeader ?? "", env.WEBHOOK_SECRET))) {
+      if (env.WEBHOOK_SECRET && secretHeader !== env.WEBHOOK_SECRET) {
         console.error("Unauthorized webhook request");
         return new Response("OK", { status: 200 });
       }
 
       const update = await request.json() as TelegramUpdate;
       ctx.waitUntil(handleUpdate(env, update));
-
       return new Response("OK", { status: 200 });
     } catch (error) {
       console.error("Webhook error:", error);
@@ -196,6 +195,11 @@ async function handleUpdate(env: Env, update: TelegramUpdate): Promise<void> {
     if (update.inline_query) {
       const ctx = createBotContext(env);
       await handleInlineQuery(ctx, update.inline_query);
+      return;
+    }
+    
+    if (update.my_chat_member || update.chat_member) {
+      console.log("Bot chat member status update received.");
       return;
     }
 
@@ -326,55 +330,56 @@ function canPostMessages(member: { status: string; can_post_messages?: boolean }
 }
 
 async function handleMessage(ctx: BotContext, message: TelegramMessage): Promise<void> {
-  const text = message.text?.trim();
-  const hasPhoto = message.photo && message.photo.length > 0;
+  try {
+    const text = message.text?.trim();
+    const hasPhoto = message.photo && message.photo.length > 0;
 
-  if (!text && !hasPhoto) {
-    return;
-  }
+    if (!text && !hasPhoto) {
+      return;
+    }
 
-  if (text) {
-    console.log("Message received:", text);
-  } else {
-    console.log("Photo message received from:", message.from?.id);
-  }
+    if (text) {
+      console.log("Message received:", text);
+    } else {
+      console.log("Photo message received from:", message.from?.id);
+    }
 
-  if (message.from) {
-    await upsertUser(ctx.env, message.from);
-  }
+    if (message.from) {
+      await upsertUser(ctx.env, message.from);
+    }
 
-  // Handle photo messages for YouTube proof (no command parsing needed)
-  if (hasPhoto && message.from) {
-    // First check if admin is uploading a banner photo
-    if (ctx.adminIds.has(message.from.id)) {
-      const handled = await handleBannerPhotoUpload(ctx, message);
+    // Handle photo messages for YouTube proof (no command parsing needed)
+    if (hasPhoto && message.from) {
+      // First check if admin is uploading a banner photo
+      if (ctx.adminIds.has(message.from.id)) {
+        const handled = await handleBannerPhotoUpload(ctx, message);
+        if (handled) {
+          return;
+        }
+      }
+
+      const handled = await handleYoutubePhotoProof(ctx, message);
       if (handled) {
         return;
       }
+      // Fall through if not a YouTube proof photo
     }
 
-    const handled = await handleYoutubePhotoProof(ctx, message);
-    if (handled) {
+    if (message.forward_from_chat) {
+      const handled = await handleVerifyForwardedMessage(ctx, message);
+      if (handled) return;
+    }
+
+    if (!text) {
       return;
     }
-    // Fall through if not a YouTube proof photo
-  }
 
-  if (message.forward_from_chat) {
-    const handled = await handleVerifyForwardedMessage(ctx, message);
-    if (handled) return;
-  }
+    const command = readCommand(text);
 
-  if (!text) {
-    return;
-  }
-
-  const command = readCommand(text);
-
-  if (command?.name === "start") {
-    await handleStart(ctx, message);
-    return;
-  }
+    if (command?.name === "start") {
+      await handleStart(ctx, message);
+      return;
+    }
 
   if (command?.name === "debugcategories") {
     await handleDebugCategoriesCommand(ctx, message);
@@ -413,6 +418,18 @@ async function handleMessage(ctx: BotContext, message: TelegramMessage): Promise
 
   if (command?.name === "admin") {
     await handleAdminPanel(ctx, message.chat.id, undefined, message.from?.id ?? 0);
+    return;
+  }
+
+  if (command?.name === "selftest") {
+    const { handleSelfTestCommand } = await import("./handlers/admin");
+    await handleSelfTestCommand(ctx, message);
+    return;
+  }
+
+  if (command?.name === "debug_last_error") {
+    const { handleDebugLastErrorCommand } = await import("./handlers/admin");
+    await handleDebugLastErrorCommand(ctx, message);
     return;
   }
 
@@ -577,8 +594,10 @@ async function handleMessage(ctx: BotContext, message: TelegramMessage): Promise
       // Treat any unknown text as a search query
       await handleSearchCommand(ctx, message, text);
       break;
+    }
+  } catch (error) {
+    console.error("handleMessage error:", error);
   }
-
 }
 
 async function handleCallback(callbackQuery: TelegramCallbackQuery, env: Env): Promise<void> {
@@ -778,11 +797,8 @@ async function handleCallbackQuery(ctx: BotContext, query: TelegramCallbackQuery
     await ctx.telegram.answerCallbackQuery(query.id, "Import cancelled.");
     await ctx.env.DB.prepare("DELETE FROM admin_states WHERE telegram_id = ?").bind(userId).run();
     if (chatId && messageId) {
-      await ctx.telegram.editMessageText(
-        chatId,
-        messageId,
-        "❌ Import cancelled."
-      );
+      const { sendOrEdit } = await import("./telegram");
+      await sendOrEdit(ctx.telegram, chatId, messageId, "❌ Import cancelled.");
     }
     return;
   }
@@ -884,7 +900,7 @@ async function handleCallbackQuery(ctx: BotContext, query: TelegramCallbackQuery
     await handleBotsSection(ctx, chatId, messageId, query.message);
     return;
   }
-  if (data === "bots_earning") {
+  if (data === "bots_earning" || data === "earning_bots") {
     await handleEarningBots(ctx, chatId, messageId, query.message);
     return;
   }
@@ -991,7 +1007,7 @@ async function handleCallbackQuery(ctx: BotContext, query: TelegramCallbackQuery
   }
 
   console.warn("Unknown callback:", data);
-  await ctx.telegram.answerCallbackQuery(query.id, "❌ Button not connected yet.", true);
+  await ctx.telegram.answerCallbackQuery(query.id, "This button is not available. Please use /start.", true);
 }
 
 

@@ -8,7 +8,7 @@
 
 import { getBotSetting, setBotSetting, setAdminState, clearAdminState, getAdminState } from "../db";
 import type { BotContext, Env, TelegramMessage, TelegramCallbackQuery } from "../types";
-import { TelegramClient } from "../telegram";
+import { TelegramClient, sendOrEdit } from "../telegram";
 
 export type BannerType = "welcome" | "categories" | "top" | "add_channel" | "leaderboard" | "bots";
 
@@ -160,7 +160,7 @@ export async function editOrSendPage(
       await sendBannerPost(chatId, ctx.env, type, text, keyboard);
     } else if (!hasPhoto && !fileId) {
       // It was text, and still no banner, so just edit text
-      await ctx.telegram.editMessageText(chatId, messageId, text, {
+      await sendOrEdit(ctx.telegram, chatId, messageId, text, {
         parse_mode: "HTML",
         reply_markup: keyboard,
         disable_web_page_preview: true,

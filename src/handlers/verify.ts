@@ -8,7 +8,7 @@ import type { BotContext, TelegramCallbackQuery } from "../types";
 import { backHomeKeyboard } from "../ui";
 
 export function isOwnershipVerificationCallbackData(data: string): boolean {
-  return data.startsWith("ov:") || data === "verify_added_bot" || data === "verify_manual_proof";
+  return data.startsWith("verify_now:");
 }
 
 export async function handleOwnershipVerificationCallback(
@@ -17,56 +17,19 @@ export async function handleOwnershipVerificationCallback(
   chatId: number,
   messageId: number | undefined,
 ): Promise<void> {
-  let data = query.data ?? "";
-  if (data === "verify_added_bot" || data === "verify_manual_proof") {
-    const channelId = await getLatestOwnershipVerificationChannelId(ctx.env, query.from.id);
-    if (!channelId) {
-      await ctx.telegram.answerCallbackQuery(query.id, "This verification is not available.", true);
+  const data = query.data ?? "";
+  
+  if (data.startsWith("verify_now:")) {
+    const channelId = Number(data.replace("verify_now:", ""));
+    if (isNaN(channelId)) {
+      await ctx.telegram.answerCallbackQuery(query.id, "Invalid verification request.", true);
       return;
     }
-    data = `ov:${data === "verify_added_bot" ? "a" : "m"}:${channelId}`;
+    await handleVerifyNow(ctx, query, chatId, messageId, channelId);
   }
-  const match = /^ov:(a|m|x):(\d+)$/.exec(data);
-
-  if (!match) {
-    await ctx.telegram.answerCallbackQuery(query.id, "Verification action is not available.", true);
-    return;
-  }
-
-  const action = match[1];
-  const channelId = Number(match[2]);
-
-  if (action === "a") {
-    await handleAutomaticVerification(ctx, query, chatId, messageId, channelId);
-    return;
-  }
-
-  if (action === "m") {
-    await markOwnershipVerificationStatus(ctx.env, query.from.id, channelId, "manual_review", "manual");
-    await ctx.telegram.answerCallbackQuery(query.id, "Manual review requested.", true);
-    await sendOrEdit(
-      ctx.telegram,
-      chatId,
-      messageId,
-      [
-        "📩 Manual Proof Requested",
-        "",
-        "Your channel is queued for admin review.",
-        "Send proof to the admin username you submitted if an admin asks for it.",
-      ].join("\n"),
-      { reply_markup: backHomeKeyboard("menu") },
-    );
-    return;
-  }
-
-  await markOwnershipVerificationStatus(ctx.env, query.from.id, channelId, "failed", "cancelled");
-  await ctx.telegram.answerCallbackQuery(query.id, "Verification cancelled.");
-  await sendOrEdit(ctx.telegram, chatId, messageId, "❌ Ownership verification cancelled.", {
-    reply_markup: backHomeKeyboard("menu"),
-  });
 }
 
-async function handleAutomaticVerification(
+async function handleVerifyNow(
   ctx: BotContext,
   query: TelegramCallbackQuery,
   chatId: number,
@@ -75,68 +38,84 @@ async function handleAutomaticVerification(
 ): Promise<void> {
   const channel = await getAdminChannel(ctx.env, channelId);
 
-  if (!channel || channel.owner_telegram_id !== query.from.id) {
-    await ctx.telegram.answerCallbackQuery(query.id, "This verification is not available.", true);
+  if (!channel) {
+    await ctx.telegram.answerCallbackQuery(query.id, "Channel not found.", true);
     return;
   }
-
-  if (channel.channel_type !== "public" || !channel.channel_username) {
-    await markOwnershipVerificationStatus(ctx.env, query.from.id, channelId, "manual_review", "manual");
-    await ctx.telegram.answerCallbackQuery(query.id, "Private channels need manual review.", true);
-    await sendManualFallback(ctx, chatId, messageId);
+  
+  const submitterId = channel.submitted_by || channel.owner_telegram_id || channel.owner_user_id;
+  if (submitterId !== query.from.id) {
+    await ctx.telegram.answerCallbackQuery(query.id, "You are not authorized to verify this channel.", true);
+    return;
+  }
+  
+  const verificationCode = channel.verification_code;
+  if (!verificationCode) {
+    await ctx.telegram.answerCallbackQuery(query.id, "No verification code exists for this channel.", true);
     return;
   }
 
   try {
-    const botData = await ctx.telegram.getMe();
-    if (!botData.ok || !botData.result) {
-      throw new Error(botData.description ?? "Telegram getMe failed");
+    // Try to get chat details. Use username if available and public, otherwise use ID (requires bot to be in the channel)
+    const targetChatId = (channel.channel_type === "public" && channel.channel_username) 
+      ? channel.channel_username 
+      : channel.id;
+      
+    const chatData = await ctx.telegram.getChat(targetChatId);
+    
+    if (!chatData.ok || !chatData.result) {
+      if (channel.channel_type === "private") {
+        await ctx.telegram.answerCallbackQuery(query.id, "Failed to read channel. Make sure the bot is an admin in the private channel.", true);
+      } else {
+        await ctx.telegram.answerCallbackQuery(query.id, `Failed to fetch channel details: ${chatData.description}`, true);
+      }
+      return;
     }
-    const memberData = await ctx.telegram.getChatMember(channel.channel_username, botData.result.id);
-    if (!memberData.ok || !memberData.result) {
-      throw new Error(memberData.description ?? "Telegram getChatMember failed");
-    }
-    const verified = memberData.result.status === "administrator" || memberData.result.status === "creator";
-
-    if (!verified) {
-      await markOwnershipVerificationStatus(ctx.env, query.from.id, channelId, "manual_review", "auto");
-      await ctx.telegram.answerCallbackQuery(query.id, "Bot admin access not found.", true);
-      await sendManualFallback(ctx, chatId, messageId);
+    
+    const description = chatData.result.description ?? "";
+    
+    if (!description.includes(verificationCode)) {
+      await ctx.telegram.answerCallbackQuery(query.id, `Code ${verificationCode} not found in channel description.`, true);
+      await sendOrEdit(
+        ctx.telegram,
+        chatId,
+        messageId,
+        [
+          "❌ Verification Failed",
+          "",
+          `The verification code <code>${verificationCode}</code> was not found in your channel's description.`,
+          "",
+          "Please add it to the description and try again.",
+        ].join("\n"),
+        { 
+          parse_mode: "HTML",
+          reply_markup: {
+            inline_keyboard: [[{ text: "🔄 Try Again", callback_data: `verify_now:${channelId}` }]]
+          }
+        }
+      );
       return;
     }
 
+    // Success
     await markOwnershipVerificationStatus(ctx.env, query.from.id, channelId, "verified", "auto");
-    await ctx.telegram.answerCallbackQuery(query.id, "✅ Ownership verified.", true);
+    await ctx.telegram.answerCallbackQuery(query.id, "✅ Ownership verified successfully!", true);
     await sendOrEdit(
       ctx.telegram,
       chatId,
       messageId,
-      ["✅ Ownership Verified", "", "Status: ⏳ Waiting for admin approval"].join("\n"),
-      { reply_markup: backHomeKeyboard("menu") },
+      [
+        "✅ <b>Ownership Verified</b>",
+        "",
+        "Your channel ownership has been successfully verified.",
+        "You can now remove the code from your channel description.",
+        "",
+        "Status: ⏳ Waiting for admin approval (if not already approved)."
+      ].join("\n"),
+      { parse_mode: "HTML" }
     );
   } catch (error) {
-    console.warn("Automatic ownership verification failed.", { channelId, error });
-    await markOwnershipVerificationStatus(ctx.env, query.from.id, channelId, "manual_review", "auto");
-    await ctx.telegram.answerCallbackQuery(query.id, "Automatic check failed. Manual review requested.", true);
-    await sendManualFallback(ctx, chatId, messageId);
+    console.error("Ownership verification check failed.", { channelId, error });
+    await ctx.telegram.answerCallbackQuery(query.id, "An error occurred while checking. Please try again.", true);
   }
-}
-
-async function sendManualFallback(
-  ctx: BotContext,
-  chatId: number,
-  messageId: number | undefined,
-): Promise<void> {
-  await sendOrEdit(
-    ctx.telegram,
-    chatId,
-    messageId,
-    [
-      "⚠️ Manual Review Needed",
-      "",
-      "I could not confirm bot-admin access automatically.",
-      "Admins can still approve after reviewing ownership proof.",
-    ].join("\n"),
-    { reply_markup: backHomeKeyboard("menu") },
-  );
 }

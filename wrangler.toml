@@ -41,4 +41,4 @@ LEADERBOARD_BANNER_FILE_ID = ""
 # Runs Sunday 7:00 PM IST
 
 [triggers]
-crons = ["30 13 * * SUN"]
+crons = ["30 13 * * 0"]

@@ -40,6 +40,7 @@ export interface TelegramChat {
   username?: string;
   first_name?: string;
   last_name?: string;
+  description?: string;
 }
 
 export interface TelegramPhotoSize {
@@ -80,6 +81,8 @@ export interface TelegramUpdate {
   message?: TelegramMessage;
   callback_query?: TelegramCallbackQuery;
   inline_query?: TelegramInlineQuery;
+  my_chat_member?: any;
+  chat_member?: any;
 }
 
 export interface TelegramInlineKeyboardButton {
@@ -120,7 +123,7 @@ export interface Category {
 }
 
 export type ChannelStatus = "pending" | "approved" | "rejected" | "hidden";
-export type ChannelType = "public" | "private";
+export type ChannelType = "public" | "private" | "bot";
 export type VerificationStatus = "pending" | "verified" | "failed" | "manual_review";
 
 export interface Channel {
@@ -137,6 +140,7 @@ export interface Channel {
   clicks?: number | null;
   reports_count?: number | null;
   owner_telegram_id?: number | null;
+  submitted_by?: number | null;
   channel_type?: ChannelType;
   channel_username?: string | null;
   channel_link?: string | null;
@@ -235,6 +239,7 @@ export interface SubmissionDraft {
   description: string | null;
   tags: string | null;
   admin_username: string | null;
+  verification_code?: string | null;
   updated_at: string;
 }
 
@@ -322,7 +327,7 @@ export interface OwnerState {
   updated_at: string;
 }
 
-export type SearchSort = "trending" | "rating" | "clicks" | "newest";
+export type SearchSort = "trending" | "votes" | "clicks" | "newest";
 
 export interface SearchState {
   telegram_id: number;

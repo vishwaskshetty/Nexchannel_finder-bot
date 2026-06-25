@@ -74,6 +74,7 @@ type AdminAction =
   | { kind: "approve"; id: number }
   | { kind: "reject"; id: number }
   | { kind: "hide"; id: number }
+  | { kind: "scam"; id: number }
   | { kind: "verify"; id: number }
   | { kind: "unverify"; id: number }
   | { kind: "owner_verify"; id: number }
@@ -191,9 +192,14 @@ export async function handleAdminCallback(
         await handleHideSubmission(ctx, query, chatId, messageId, userId, action.id);
         break;
 
+      case "scam":
+        console.log("Admin channel scam id:", action.id);
+        await handleMarkScam(ctx, query, chatId, messageId, userId, action.id);
+        break;
+
       case "verify":
-        console.log("Admin channel id:", action.id);
-        await handleMarkVerified(ctx, query, chatId, messageId, userId, action.id);
+        console.log("Admin channel verify id:", action.id);
+        await handleAskVerify(ctx, query, chatId, messageId, userId, action.id);
         break;
 
       case "unverify":
@@ -616,7 +622,7 @@ export async function handleHideSubmission(
   }
 }
 
-export async function handleMarkVerified(
+export async function handleMarkScam(
   ctx: BotContext,
   query: TelegramCallbackQuery,
   chatId: number,
@@ -629,29 +635,78 @@ export async function handleMarkVerified(
     return;
   }
 
-  console.log("Admin channel id:", channelId);
-  const previous = await getAdminChannel(ctx.env, channelId);
+  const previous = await setChannelStatus(ctx.env, channelId, "rejected");
   if (!previous) {
     await ctx.telegram.answerCallbackQuery(query.id, "❌ Channel not found.", true);
-    await sendOrEdit(ctx.telegram, chatId, messageId, "❌ Channel not found.", {
-      reply_markup: adminBackKeyboard(),
-    });
+    return;
+  }
+  
+  await ctx.env.DB.prepare("UPDATE channels SET is_scam = 1 WHERE id = ?").bind(channelId).run();
+
+  await ctx.telegram.answerCallbackQuery(query.id, "🚫 Channel marked as SCAM and rejected.");
+
+  const updated = await getAdminChannel(ctx.env, channelId);
+  if (updated) {
+    await showAdminChannel(ctx, chatId, messageId, updated);
+  } else {
+    await showNextAfterAction(ctx, chatId, messageId, userId, previous.status);
+  }
+}
+
+export async function handleAskVerify(
+  ctx: BotContext,
+  query: TelegramCallbackQuery,
+  chatId: number,
+  messageId: number | undefined,
+  userId: number,
+  channelId: number,
+): Promise<void> {
+  if (!(await ensureAdmin(ctx, chatId, messageId, userId))) {
+    await ctx.telegram.answerCallbackQuery(query.id, ADMIN_ONLY_TEXT, true);
     return;
   }
 
-  const channel = await markChannelVerified(ctx.env, channelId);
+  const channel = await getAdminChannel(ctx.env, channelId);
   if (!channel) {
-    await ctx.telegram.answerCallbackQuery(query.id, "❌ Could not verify channel.", true);
+    await ctx.telegram.answerCallbackQuery(query.id, "❌ Channel not found.", true);
     return;
   }
 
-  await ctx.telegram.answerCallbackQuery(query.id, "⭐ Channel verified.");
-
-  if (previous.status === "pending") {
-    await notifyOwner(ctx, previous.owner_telegram_id, APPROVED_OWNER_TEXT);
+  const verificationCode = channel.verification_code;
+  if (!verificationCode) {
+    await ctx.telegram.answerCallbackQuery(query.id, "❌ No verification code found.", true);
+    return;
   }
 
-  await showAdminChannel(ctx, chatId, messageId, channel);
+  const submitterId = channel.submitted_by || channel.owner_telegram_id || channel.owner_user_id;
+  if (!submitterId) {
+    await ctx.telegram.answerCallbackQuery(query.id, "❌ No submitter found to ask.", true);
+    return;
+  }
+
+  const msg = [
+    "🔐 <b>Ownership Verification Required</b>",
+    "",
+    `Your channel <b>${channel.title || channel.channel_username}</b> requires ownership verification.`,
+    "",
+    "Please add this exact code to your channel's description / about section:",
+    `<b>🔐 Verification:</b> <code>${verificationCode}</code>`,
+    "",
+    "After adding it, click the button below to verify.",
+  ].join("\n");
+
+  try {
+    await ctx.telegram.sendMessage(submitterId, msg, {
+      parse_mode: "HTML",
+      reply_markup: {
+        inline_keyboard: [[{ text: "✅ Verify Now", callback_data: `verify_now:${channelId}` }]],
+      },
+    });
+    await ctx.telegram.answerCallbackQuery(query.id, "✅ Verification request sent.", true);
+  } catch (err) {
+    console.error("Failed to send verify request:", err);
+    await ctx.telegram.answerCallbackQuery(query.id, "❌ Failed to send request to user.", true);
+  }
 }
 
 export async function handleMarkUnverified(
@@ -1089,7 +1144,7 @@ function parseAdminAction(data: string): AdminAction | null {
     };
   }
 
-  const canonicalMatch = /^admin_(channel|approve|reject|hide|verify|unverify|owner_verify):(\d+)$/.exec(data);
+  const canonicalMatch = /^admin_(channel|approve|reject|hide|scam|verify|unverify|owner_verify):(\d+)$/.exec(data);
   if (canonicalMatch) {
     const id = positiveId(canonicalMatch[2]);
     if (!id) {
@@ -1101,6 +1156,7 @@ function parseAdminAction(data: string): AdminAction | null {
       approve: "approve",
       reject: "reject",
       hide: "hide",
+      scam: "scam",
       verify: "verify",
       unverify: "unverify",
       owner_verify: "owner_verify",
@@ -1269,4 +1325,24 @@ export async function handleCheckReviewChannelCommand(
     `Can send messages: ${canSendMessages}`,
     error ? `Error: ${error}` : "Error: none",
   ].join("\n"));
+}
+
+export async function handleSelfTestCommand(ctx: BotContext, message: TelegramMessage): Promise<void> {
+  const userId = message.from?.id;
+  if (!userId || !(await ensureAdmin(ctx, message.chat.id, undefined, userId))) {
+    return;
+  }
+  const { ensureSchema } = await import("../db");
+  await ensureSchema(ctx.env);
+  await ctx.telegram.sendMessage(message.chat.id, "✅ Self-test completed. Schema self-healing triggered.");
+}
+
+export async function handleDebugLastErrorCommand(ctx: BotContext, message: TelegramMessage): Promise<void> {
+  const userId = message.from?.id;
+  if (!userId || !(await ensureAdmin(ctx, message.chat.id, undefined, userId))) {
+    return;
+  }
+  const { getLastError } = await import("../db");
+  const err = getLastError();
+  await ctx.telegram.sendMessage(message.chat.id, `🐛 <b>Last Error:</b>\n\n<pre>${err}</pre>`, { parse_mode: "HTML" });
 }

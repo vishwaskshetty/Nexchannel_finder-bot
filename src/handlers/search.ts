@@ -171,6 +171,21 @@ async function loadSearchState(ctx: BotContext, userId: number): Promise<SearchV
   return stored ? stateFromRow(stored) : DEFAULT_SEARCH_STATE;
 }
 
+export function normalizeSort(value: string | undefined | null): SearchSort {
+  const map: Record<string, SearchSort> = {
+    t: "trending",
+    r: "votes",
+    c: "clicks",
+    n: "newest",
+    trending: "trending",
+    votes: "votes",
+    rating: "votes",
+    clicks: "clicks",
+    newest: "newest"
+  };
+  return map[value ?? ""] || "trending";
+}
+
 async function saveSearchState(
   ctx: BotContext,
   userId: number,
@@ -178,7 +193,7 @@ async function saveSearchState(
 ): Promise<void> {
   await setSearchState(ctx.env, userId, {
     query: state.query,
-    sort: state.sort,
+    sort: normalizeSort(state.sort),
     language: state.language,
     verifiedOnly: state.verifiedOnly,
   });
@@ -187,7 +202,7 @@ async function saveSearchState(
 function stateFromRow(row: SearchState): SearchViewState {
   return {
     query: row.query,
-    sort: row.sort,
+    sort: normalizeSort(row.sort),
     language: row.language,
     verifiedOnly: row.verified_only === 1,
   };
@@ -212,15 +227,7 @@ function parseSearchAction(
 
   const sortMatch = /^sr:o:(t|r|v|c|n)$/.exec(data);
   if (sortMatch) {
-    const sortByCode: Record<string, SearchSort> = {
-      t: "trending",
-      r: "rating",
-      v: "rating",
-      c: "clicks",
-      n: "newest",
-    };
-
-    return { kind: "sort", sort: sortByCode[sortMatch[1]] };
+    return { kind: "sort", sort: normalizeSort(sortMatch[1]) };
   }
 
   const pageMatch = /^sr:p:(\d+)$/.exec(data);
@@ -240,43 +247,49 @@ export async function handleInlineQuery(
   ctx: BotContext,
   query: TelegramInlineQuery
 ): Promise<void> {
-  const searchTerm = query.query.trim();
-  let channels = [];
-  
-  if (searchTerm.length >= 2) {
-    channels = await searchChannels(ctx.env, {
-      query: searchTerm,
-      sort: "trending",
-      language: null,
-      verifiedOnly: false,
-      limit: 10,
-      offset: 0,
-    });
-  } else {
-    const { listTopChannels } = await import("../db");
-    channels = await listTopChannels(ctx.env, 10);
-  }
+  try {
+    const searchTerm = query.query.trim();
+    let channels = [];
+    
+    if (searchTerm.length >= 2) {
+      channels = await searchChannels(ctx.env, {
+        query: searchTerm,
+        sort: "trending",
+        language: null,
+        verifiedOnly: false,
+        limit: 10,
+        offset: 0,
+      });
+    } else {
+      const { listTopChannels } = await import("../db");
+      channels = await listTopChannels(ctx.env, 10);
+    }
 
-  const results = channels.map((channel) => {
-    const verified = channel.verified ? "✅" : "";
-    return {
-      type: "article",
-      id: String(channel.id),
-      title: `${channel.title} ${verified}`.trim(),
-      description: `${channel.category} • ⭐ ${channel.rating_average ?? 0}/5 • 👀 ${channel.clicks ?? 0} clicks`,
-      input_message_content: {
-        message_text: `📢 <b>${channel.title}</b> ${verified}\n\n🆔 ID: ${channel.id}\n📂 Category: ${channel.category}\n🌍 Language: ${channel.language ?? "Mixed"}\n⭐ Rating: ${channel.rating_average ?? 0}/5\n👀 Clicks: ${channel.clicks ?? 0}\n\n🔗 ${channel.username ? `@${channel.username}` : "Private Channel"}\n\n🔎 Found via @NexChannelFinderBot`,
-        parse_mode: "HTML",
-      },
-      reply_markup: {
-        inline_keyboard: [
-          [
-            { text: "🔗 Join Channel", url: channel.username ? `https://t.me/${channel.username}` : `https://t.me/${ctx.env.BOT_USERNAME || 'NexChannelFinderBot'}?start=${channel.id}` }
+    const { escapeHtml } = await import("../ui");
+    const results = channels.map((channel) => {
+      const verified = channel.verified ? "✅" : "";
+      const safeTitle = escapeHtml(channel.title || "");
+      return {
+        type: "article",
+        id: String(channel.id),
+        title: `${channel.title} ${verified}`.trim(),
+        description: `${channel.category} • ⭐ ${channel.rating_average ?? 0}/5 • 👀 ${channel.clicks ?? 0} clicks`,
+        input_message_content: {
+          message_text: `📢 <b>${safeTitle}</b> ${verified}\n\n🆔 ID: ${channel.id}\n📂 Category: ${channel.category}\n🌍 Language: ${channel.language ?? "Mixed"}\n⭐ Rating: ${channel.rating_average ?? 0}/5\n👀 Clicks: ${channel.clicks ?? 0}\n\n🔗 ${channel.username ? `@${channel.username}` : "Private Channel"}\n\n🔎 Found via @NexChannelFinderBot`,
+          parse_mode: "HTML",
+        },
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: "🔗 Join Channel", url: channel.username ? `https://t.me/${channel.username}` : `https://t.me/${ctx.env.BOT_USERNAME || 'NexChannelFinderBot'}?start=${channel.id}` }
+            ]
           ]
-        ]
-      }
-    };
-  });
+        }
+      };
+    });
 
-  await ctx.telegram.answerInlineQuery(query.id, results, { cache_time: 30 });
+    await ctx.telegram.answerInlineQuery(query.id, results, { cache_time: 300 });
+  } catch (error) {
+    console.error("handleInlineQuery error:", error);
+  }
 }

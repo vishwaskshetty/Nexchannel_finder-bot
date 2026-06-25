@@ -301,13 +301,8 @@ export async function showYouTubeStatus(
       ];
     }
 
-    if (messageId && ctx) {
-      await ctx.telegram.editMessageText(chatId, messageId, text, {
-        reply_markup: { inline_keyboard: buttons },
-        disable_web_page_preview: true,
-      });
-    } else if (ctx) {
-      await ctx.telegram.sendMessage(chatId, text, {
+    if (ctx) {
+      await sendOrEdit(ctx.telegram, chatId, messageId, text, {
         reply_markup: { inline_keyboard: buttons },
         disable_web_page_preview: true,
       });
