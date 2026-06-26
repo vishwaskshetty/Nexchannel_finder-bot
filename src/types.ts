@@ -183,26 +183,30 @@ export interface Channel {
   updated_at: string;
 }
 
-export interface ChannelImportBatch {
+export interface ImportBatch {
   id: string;
   source_name: string;
   source_url: string;
-  imported_by: number;
+  default_category: string;
+  default_language: string;
   total_found: number;
-  total_imported: number;
-  total_skipped: number;
-  status: string;
+  imported: number;
+  duplicate: number;
+  skipped: number;
+  invalid: number;
+  created_by: number;
   created_at: string;
 }
 
-export interface ChannelImportSkip {
-  id: number;
+export interface ImportLog {
+  id?: number;
   batch_id: string;
-  title: string;
-  username: string;
-  external_category: string;
+  source_name: string;
+  source_url: string;
+  telegram_link: string;
+  status: string;
   reason: string;
-  created_at: string;
+  created_at?: string;
 }
 
 export interface Submission {

@@ -8,6 +8,7 @@ import {
   backToMenuKeyboard,
   forceSubscribeKeyboard,
   mainMenu,
+  getHelpText,
 } from "../ui";
 import { handleSubmitStart } from "./submit";
 import { editOrSendPage } from "./banners";
@@ -77,8 +78,11 @@ export async function handleHelp(
   ctx: BotContext,
   chatId: number,
   messageId?: number,
+  userId?: number,
 ): Promise<void> {
-  await sendOrEdit(ctx.telegram, chatId, messageId, HELP_TEXT, {
+  const isUserAdmin = userId ? ctx.adminIds.has(userId) : ctx.adminIds.has(chatId);
+  const helpText = getHelpText(isUserAdmin);
+  await sendOrEdit(ctx.telegram, chatId, messageId, helpText, {
     reply_markup: backToMenuKeyboard(),
     parse_mode: "HTML",
   });

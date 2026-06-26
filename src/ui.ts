@@ -194,40 +194,52 @@ export const HOME_TEXT = [
 ].join("\n");
 
 
-export const HELP_TEXT = [
-  "<b>ℹ️ NexChannel Finder Help</b>",
-  "",
-  "Find trusted Telegram channels by search, category, language, rating, and trending score.",
-  "",
-  "<b>⭐ Features</b>",
-  "🔍 Direct search by typing any keyword",
-  "📂 Browse channels by category",
-  "🌐 Filter channels by language",
-  "🔥 Trending channels by smart score",
-  "🧠 Smart recommendations",
-  "💾 Save favorite channels",
-  "⭐ Rate channels",
-  "🔎 Find similar channels",
-  "🔐 Ownership verified channels",
-  "🚫 Report bad channels",
-  "",
-  "<b>User Commands</b>",
-  "/start - Open main menu",
-  "/help - Show help",
-  "/search - Search channels",
-  "/submit - Submit your channel",
-  "/mysaved - View saved channels",
-  "/weeklyleaderboard - Top channels of the week",
-  "/submitterleaderboard - Top submitters",
-  "",
-  "<b>Admin Commands</b>",
-  "/addchannel - Add one channel",
-  "/bulkadd - Add many channels",
-  "/pending - View pending channels",
-  "/stats - View bot database stats",
-  "/export - Export approved channels",
-  "/postleaderboard - Post weekly leaderboard"
-].join("\n");
+export function getHelpText(isAdmin: boolean): string {
+  const lines = [
+    "<b>ℹ️ NexChannel Finder Help</b>",
+    "",
+    "Find trusted Telegram channels by search, category, language, rating, and trending score.",
+    "",
+    "<b>⭐ Features</b>",
+    "🔍 Direct search by typing any keyword",
+    "📂 Browse channels by category",
+    "🌐 Filter channels by language",
+    "🔥 Trending channels by smart score",
+    "🧠 Smart recommendations",
+    "💾 Save favorite channels",
+    "⭐ Rate channels",
+    "🔎 Find similar channels",
+    "🔐 Ownership verified channels",
+    "🚫 Report bad channels",
+    "",
+    "<b>User Commands</b>",
+    "/start - Open main menu",
+    "/help - Show help",
+    "/search - Search channels",
+    "/submit - Submit your channel",
+    "/mysaved - View saved channels",
+    "/weeklyleaderboard - Top channels of the week",
+    "/submitterleaderboard - Top submitters"
+  ];
+
+  if (isAdmin) {
+    lines.push(
+      "",
+      "<b>Admin Commands</b>",
+      "/addchannel - Add one channel",
+      "/bulkadd - Add many channels",
+      "/pending - View pending channels",
+      "/stats - View bot database stats",
+      "/export - Export approved channels",
+      "/postleaderboard - Post weekly leaderboard",
+      "/setupcommands - Setup bot commands"
+    );
+  }
+
+  return lines.join("\n");
+}
+
+export const HELP_TEXT = getHelpText(false);
 
 
 export const FORCE_SUB_TEXT = [
@@ -1799,6 +1811,14 @@ function weeklyPostChannelBlock(channel: Channel & { saves?: number, trending_sc
 }
 
 export function submitterLeaderboardText(submitters: any[]): string {
+  if (!submitters || submitters.length === 0) {
+    return [
+      "<b>🎁 Submitter Leaderboard</b>",
+      "",
+      "No submitters yet."
+    ].join("\n");
+  }
+
   const medals = ["🥇", "🥈", "🥉"];
   return [
     "🎁 𝗧𝗼𝗽 𝗖𝗵𝗮𝗻𝗻𝗲𝗹 𝗦𝘂𝗯𝗺𝗶𝘁𝘁𝗲𝗿𝘀",

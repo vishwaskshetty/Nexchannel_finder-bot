@@ -42,6 +42,7 @@ export const CHANNEL_SELECT = `
   COALESCE(ch.category, '') AS category,
   COALESCE(ch.language, '') AS language,
   COALESCE(ch.tags, '') AS tags,
+  COALESCE(ch.views, 0) AS views,
   COALESCE(ch.admin_username, '') AS admin_username,
   COALESCE(ch.status, 'pending') AS status,
   ch.featured,
@@ -101,7 +102,19 @@ export async function ensureSchema(env: Env): Promise<void> {
       "is_scam INTEGER DEFAULT 0",
       "quality_status TEXT DEFAULT 'unchecked'",
       "admin_notes TEXT",
-      "last_checked_at DATETIME"
+      "last_checked_at DATETIME",
+      "source_name TEXT DEFAULT ''",
+      "source_url TEXT DEFAULT ''",
+      "source_rank INTEGER DEFAULT 0",
+      "subscribers_text TEXT DEFAULT ''",
+      "import_batch_id TEXT DEFAULT ''",
+      "last_imported_at TEXT",
+      "is_public_listing INTEGER DEFAULT 1",
+      "channel_type TEXT DEFAULT 'public'",
+      "channel_link TEXT DEFAULT ''",
+      "invite_link TEXT DEFAULT ''",
+      "channel_username TEXT DEFAULT ''",
+      "admin_username TEXT"
     ];
 
     for (const colDef of columnsToAdd) {
@@ -114,6 +127,53 @@ export async function ensureSchema(env: Env): Promise<void> {
         }
       }
     }
+
+    const importLogColumns = [
+      "batch_id TEXT",
+      "source_name TEXT",
+      "source_url TEXT",
+      "telegram_link TEXT",
+      "status TEXT",
+      "reason TEXT"
+    ];
+
+    for (const colDef of importLogColumns) {
+      try {
+        await env.DB.prepare(`ALTER TABLE import_logs ADD COLUMN ${colDef}`).run();
+      } catch (err: any) {
+        if (!err.message?.includes("duplicate column")) {
+          console.error(`Failed to add column ${colDef} to import_logs:`, err);
+        }
+      }
+    }
+
+    await env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS import_batches (
+        id TEXT PRIMARY KEY,
+        source_name TEXT,
+        source_url TEXT,
+        default_category TEXT,
+        default_language TEXT,
+        total_found INTEGER DEFAULT 0,
+        imported INTEGER DEFAULT 0,
+        duplicate INTEGER DEFAULT 0,
+        skipped INTEGER DEFAULT 0,
+        invalid INTEGER DEFAULT 0,
+        created_by INTEGER,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+
+    await env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS user_activity (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        channel_id INTEGER NOT NULL,
+        action TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+
   } catch (err) {
     storeLastError(err);
     console.error("ensureSchema failed:", err);
@@ -402,31 +462,45 @@ export async function updateTrendingScore(env: Env, channelId: number): Promise<
   `).bind(channelId).run();
 }
 
+export async function safeIncrementChannelClick(
+  env: Env,
+  channelId: number,
+  telegramId?: number,
+): Promise<void> {
+  try {
+    const tableInfo = await env.DB.prepare("PRAGMA table_info(channels)").all();
+    const columns = tableInfo.results.map((r: any) => r.name);
+    
+    let updates = [];
+    if (columns.includes("clicks")) updates.push("clicks = clicks + 1");
+    if (columns.includes("join_clicks")) updates.push("join_clicks = join_clicks + 1");
+    
+    if (updates.length > 0) {
+      updates.push("updated_at = CURRENT_TIMESTAMP");
+      const setClause = updates.join(", ");
+      await env.DB.prepare(`UPDATE channels SET ${setClause} WHERE id = ?`).bind(channelId).run();
+      await updateTrendingScore(env, channelId);
+    }
+  } catch (error) {
+    console.error("safeIncrementChannelClick failed:", error);
+  }
+
+  if (telegramId) {
+    try {
+      await env.DB.prepare("INSERT INTO clicks (telegram_id, channel_id) VALUES (?, ?)").bind(telegramId, channelId).run();
+    } catch (e) {
+      console.error("Insert clicks failed:", e);
+    }
+    await trackUserActivity(env, telegramId, channelId, 'click');
+  }
+}
+
 export async function incrementChannelClicks(
   env: Env,
   channelId: number,
   telegramId?: number,
 ): Promise<void> {
-  await env.DB.prepare(
-    `
-    UPDATE channels
-    SET join_clicks = join_clicks + 1,
-      clicks = clicks + 1,
-      updated_at = CURRENT_TIMESTAMP
-    WHERE id = ?
-    `,
-  )
-    .bind(channelId)
-    .run();
-
-  await updateTrendingScore(env, channelId);
-
-  if (telegramId) {
-    await env.DB.prepare("INSERT INTO clicks (telegram_id, channel_id) VALUES (?, ?)")
-      .bind(telegramId, channelId)
-      .run();
-    await logUserActivity(env, telegramId, channelId, 'click');
-  }
+  await safeIncrementChannelClick(env, channelId, telegramId);
 }
 
 export async function incrementChannelViews(env: Env, channelId: number, telegramId?: number): Promise<void> {
@@ -441,10 +515,18 @@ export async function incrementChannelViews(env: Env, channelId: number, telegra
   }
 }
 
+export async function trackUserActivity(env: Env, userId: number, channelId: number, action: string): Promise<void> {
+  try {
+    await env.DB.prepare(
+      `INSERT INTO user_activity (user_id, channel_id, action) VALUES (?, ?, ?)`
+    ).bind(userId, channelId, action).run();
+  } catch (error) {
+    console.error("trackUserActivity failed:", error);
+  }
+}
+
 export async function logUserActivity(env: Env, userId: number, channelId: number, action: string): Promise<void> {
-  await env.DB.prepare(
-    `INSERT INTO user_activity (user_id, channel_id, action) VALUES (?, ?, ?)`
-  ).bind(userId, channelId, action).run();
+  await trackUserActivity(env, userId, channelId, action);
 }
 
 export async function rateChannel(
@@ -2102,4 +2184,114 @@ export async function countChannelsByLanguage(env: Env, language: string): Promi
     .bind(language)
     .first<{ c: number }>();
   return row?.c ?? 0;
+}
+
+// ─── Website Importer Functions ───────────────────────────────────────────────
+
+import type { ImportBatch, ImportLog } from "./types";
+
+export async function saveImportBatch(env: Env, batch: ImportBatch): Promise<void> {
+  await env.DB.prepare(`
+    INSERT INTO import_batches (
+      id, source_name, source_url, default_category, default_language,
+      total_found, imported, duplicate, skipped, invalid, created_by, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).bind(
+    batch.id, batch.source_name, batch.source_url, batch.default_category, batch.default_language,
+    batch.total_found, batch.imported, batch.duplicate, batch.skipped, batch.invalid,
+    batch.created_by, batch.created_at
+  ).run();
+}
+
+export async function logImportEvent(env: Env, log: ImportLog): Promise<void> {
+  await env.DB.prepare(`
+    INSERT INTO import_logs (
+      batch_id, source_name, source_url, telegram_link, status, reason
+    ) VALUES (?, ?, ?, ?, ?, ?)
+  `).bind(
+    log.batch_id, log.source_name, log.source_url, log.telegram_link, log.status, log.reason
+  ).run();
+}
+
+export async function saveImportedChannel(env: Env, c: Partial<Channel>): Promise<void> {
+  await env.DB.prepare(`
+    INSERT INTO channels (
+      username, title, description, category, language, tags,
+      channel_type, channel_username, channel_link, invite_link,
+      source_name, source_url, source_rank, subscribers_text, import_batch_id,
+      last_imported_at, status, quality_status, verified, ownership_verified
+    ) VALUES (
+      ?, ?, ?, ?, ?, ?,
+      ?, ?, ?, ?,
+      ?, ?, ?, ?, ?,
+      ?, ?, ?, ?, ?
+    )
+  `).bind(
+    c.channel_username || c.invite_link || `imported_\${Date.now()}_\${Math.random()}`,
+    c.title, c.description, c.category, c.language, c.tags,
+    c.channel_type, c.channel_username, c.channel_link, c.invite_link,
+    c.source_name, c.source_url, c.source_rank, c.subscribers_text, c.import_batch_id,
+    c.last_imported_at, c.status, c.quality_status, c.verified, c.ownership_verified
+  ).run();
+}
+
+export async function getImportPreview(env: Env, batchId: string): Promise<Channel[]> {
+  const result = await env.DB.prepare(`
+    SELECT \${CHANNEL_SELECT}
+    FROM channels ch
+    LEFT JOIN categories cat ON cat.slug = ch.category
+    WHERE ch.import_batch_id = ? AND ch.status = 'pending'
+    ORDER BY ch.id ASC
+    LIMIT 10
+  `).bind(batchId).all<Channel>();
+  return result.results ?? [];
+}
+
+export async function getImportBatchInfo(env: Env, batchId: string): Promise<ImportBatch | null> {
+  return env.DB.prepare(`SELECT * FROM import_batches WHERE id = ?`).bind(batchId).first<ImportBatch>();
+}
+
+export async function approveImportBatch(env: Env, batchId: string): Promise<{approved: number, rejected: number}> {
+  const result = await env.DB.prepare(`
+    UPDATE channels
+    SET status = 'approved', verified = 1, quality_status = 'approved'
+    WHERE import_batch_id = ? AND status = 'pending'
+      AND (is_scam IS NULL OR is_scam = 0)
+      AND title IS NOT NULL AND title != ''
+      AND category IS NOT NULL AND category != ''
+      AND language IS NOT NULL AND language != ''
+      AND (
+        (channel_type = 'public' AND channel_username IS NOT NULL AND channel_username != '')
+        OR
+        (channel_type = 'private' AND invite_link IS NOT NULL AND invite_link != '')
+      )
+  `).bind(batchId).run();
+  
+  const approved = result.meta.changes;
+  
+  const rejectedResult = await env.DB.prepare(`
+    UPDATE channels
+    SET status = 'rejected', quality_status = 'rejected', admin_notes = 'Failed validation on batch approve'
+    WHERE import_batch_id = ? AND status = 'pending'
+  `).bind(batchId).run();
+  
+  return { approved, rejected: rejectedResult.meta.changes };
+}
+
+export async function rejectImportBatch(env: Env, batchId: string): Promise<number> {
+  const result = await env.DB.prepare(`
+    UPDATE channels
+    SET status = 'rejected', quality_status = 'rejected'
+    WHERE import_batch_id = ? AND status = 'pending'
+  `).bind(batchId).run();
+  return result.meta.changes;
+}
+
+
+
+export async function getImportBatchesList(env: Env, limit = 10): Promise<ImportBatch[]> {
+  const res = await env.DB.prepare(`
+    SELECT * FROM import_batches ORDER BY created_at DESC LIMIT ?
+  `).bind(limit).all<ImportBatch>();
+  return res.results ?? [];
 }

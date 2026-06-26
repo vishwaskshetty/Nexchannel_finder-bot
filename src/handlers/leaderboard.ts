@@ -75,26 +75,34 @@ export type LeaderboardPostResult =
   | { status: "error"; description: string };
 
 export async function postWeeklyLeaderboard(env: Env): Promise<LeaderboardPostResult> {
-  const telegram = new TelegramClient(env.BOT_TOKEN);
-  const channel = publicPostChannel(env);
-  const channels = await getPostChannels(env);
+  try {
+    const channel = publicPostChannel(env);
+    if (!channel) {
+      console.warn("PUBLIC_POST_CHANNEL is not configured in environment variables.");
+      return { status: "error", description: "PUBLIC_POST_CHANNEL is missing" };
+    }
 
-  if (channels.length === 0) {
-    return { status: "empty" };
+    const channels = await getPostChannels(env);
+    if (channels.length === 0) {
+      console.log("No approved channels found for weekly leaderboard.");
+      return { status: "empty" };
+    }
+
+    const { sendBannerPost } = await import("./banners");
+    await sendBannerPost(
+      channel,
+      env,
+      "leaderboard",
+      formatWeeklyLeaderboard(channels),
+      weeklyLeaderboardPostKeyboard(env.BOT_USERNAME)
+    );
+
+    console.log("Weekly leaderboard posted successfully to", channel);
+    return { status: "posted" };
+  } catch (error: any) {
+    console.error("Failed to post weekly leaderboard:", error);
+    return { status: "error", description: error?.message || String(error) };
   }
-
-  const { sendBannerPost } = await import("./banners");
-  await sendBannerPost(
-    channel,
-    env,
-    "leaderboard",
-    formatWeeklyLeaderboard(channels),
-    weeklyLeaderboardPostKeyboard(env.BOT_USERNAME)
-  );
-
-
-
-  return { status: "posted" };
 }
 
 export function publicPostChannel(env: Env): string {

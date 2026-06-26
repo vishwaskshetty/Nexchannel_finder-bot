@@ -266,6 +266,70 @@ function validateInlineKeyboard(value: unknown): string | null {
   return null;
 }
 
+export async function safeEditOrSend(
+  env: Env | TelegramClient,
+  chatId: ChatId,
+  messageId: number | undefined,
+  text: string,
+  replyMarkup?: any
+): Promise<any> {
+  const token = env instanceof TelegramClient ? (env as any).token : env.BOT_TOKEN;
+  
+  let actualMarkup = replyMarkup;
+  if (replyMarkup && typeof replyMarkup === "object") {
+    if ("reply_markup" in replyMarkup) {
+      actualMarkup = replyMarkup.reply_markup;
+    } else if ("inline_keyboard" in replyMarkup) {
+      actualMarkup = replyMarkup;
+    }
+  }
+
+  const callApi = async (method: string, payload: Record<string, any>) => {
+    const res = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    return await res.json() as any;
+  };
+
+  try {
+    if (messageId) {
+      const edited = await callApi("editMessageText", {
+        chat_id: String(chatId),
+        message_id: messageId,
+        text,
+        parse_mode: "HTML",
+        reply_markup: actualMarkup
+      });
+
+      if (edited.ok) return edited;
+
+      const desc = edited.description || "";
+      if (desc.includes("message is not modified")) {
+        return edited;
+      }
+
+      if (desc.includes("there is no text in the message to edit")) {
+        try {
+          await callApi("deleteMessage", { chat_id: String(chatId), message_id: messageId });
+        } catch (e) {}
+      } else {
+        console.warn("safeEditOrSend edit failed:", edited);
+      }
+    }
+  } catch (error) {
+    console.error("safeEditOrSend edit failed:", error);
+  }
+
+  return callApi("sendMessage", {
+    chat_id: String(chatId),
+    text,
+    parse_mode: "HTML",
+    reply_markup: actualMarkup
+  });
+}
+
 export async function sendOrEdit(
   telegram: TelegramClient,
   chatId: ChatId,
@@ -273,57 +337,72 @@ export async function sendOrEdit(
   text: string,
   options: MessageOptions = {},
 ): Promise<TelegramApiResponse<TelegramMessage | true>> {
-  const finalOptions = { ...options, parse_mode: "HTML" as const };
-  
-  if (messageId) {
-    const edited = await telegram.editMessageText(chatId, messageId, text, finalOptions);
-    if (edited.ok) {
-      return edited;
-    }
-
-    const desc = edited.description?.toLowerCase() || "";
-    if (desc.includes("message is not modified")) {
-      return { ok: true, result: true };
-    }
-
-    if (!desc.includes("there is no text in the message to edit")) {
-       console.warn("Could not edit message (not modified/no text), sending a new one instead.", edited);
-    }
-    
-    try {
-      await telegram.call("deleteMessage", { chat_id: String(chatId), message_id: messageId });
-    } catch (e) {
-      // ignore
-    }
-  }
-
-  const sent = await telegram.sendMessage(chatId, text, finalOptions);
-  if (!sent.ok) {
-    console.error("Telegram API sendMessage failed:", sent);
-  }
-  return sent;
+  return safeEditOrSend(telegram, chatId, messageId, text, options);
 }
 
-export async function safeEditOrSend(
-  env: Env,
-  chatId: ChatId,
-  messageId: number | undefined,
-  text: string,
-  keyboard?: TelegramInlineKeyboardMarkup,
-): Promise<TelegramApiResponse<TelegramMessage | true>> {
-  return sendOrEdit(new TelegramClient(env.BOT_TOKEN), chatId, messageId, text, {
-    reply_markup: keyboard,
-  });
+export const USER_COMMANDS = [
+  { command: "start", description: "Open main menu" },
+  { command: "help", description: "Show help" },
+  { command: "search", description: "Search channels" },
+  { command: "submit", description: "Submit your channel" },
+  { command: "mysaved", description: "Saved channels" },
+  { command: "trending", description: "Trending channels" },
+  { command: "language", description: "Browse by language" },
+  { command: "categories", description: "Browse categories" },
+  { command: "recommend", description: "Smart recommendations" },
+  { command: "inline", description: "Inline search help" }
+];
+
+export const ADMIN_COMMANDS = [
+  ...USER_COMMANDS,
+  { command: "admin", description: "Open admin panel" },
+  { command: "pending", description: "Pending channels" },
+  { command: "stats", description: "Bot stats" },
+  { command: "addchannel", description: "Add one channel" },
+  { command: "bulkadd", description: "Add many channels" },
+  { command: "export", description: "Export channels" },
+  { command: "postleaderboard", description: "Post leaderboard" },
+  { command: "importsource", description: "Import from website" },
+  { command: "importpreview", description: "Preview import" },
+  { command: "importapprove", description: "Approve import" },
+  { command: "importreject", description: "Reject import" },
+  { command: "selftest", description: "Bot health check" },
+  { command: "debug_last_error", description: "Latest errors" }
+];
+
+export function getAdminIds(env: Env): string[] {
+  return String(env.ADMIN_IDS || "")
+    .split(",")
+    .map(id => id.trim())
+    .filter(Boolean);
 }
 
 export function isAdmin(userId: number | string | undefined, env: Env): boolean {
   if (!userId) return false;
-  const admins = String(env.ADMIN_IDS || "")
-    .split(",")
-    .map(id => id.trim())
-    .filter(Boolean);
+  return getAdminIds(env).includes(String(userId));
+}
 
-  return admins.includes(String(userId));
+export async function setupBotCommands(env: Env): Promise<boolean> {
+  // Set public commands for everyone
+  await telegramApi(env, "setMyCommands", {
+    commands: USER_COMMANDS,
+    scope: { type: "default" }
+  });
+
+  // Set admin commands only for each admin private chat
+  const adminIds = getAdminIds(env);
+
+  for (const adminId of adminIds) {
+    await telegramApi(env, "setMyCommands", {
+      commands: ADMIN_COMMANDS,
+      scope: {
+        type: "chat",
+        chat_id: Number(adminId)
+      }
+    });
+  }
+
+  return true;
 }
 
 export function readCommand(text: string): { name: string; args: string } | null {

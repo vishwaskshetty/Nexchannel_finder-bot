@@ -22,6 +22,7 @@ import {
   getAdminReviewChannelId,
   sendAdminReviewNotification,
   sendOrEdit,
+  safeEditOrSend,
 } from "../telegram";
 import type {
   AdminState,
@@ -30,6 +31,7 @@ import type {
   TelegramCallbackQuery,
   TelegramInlineKeyboardMarkup,
   TelegramMessage,
+  Env,
 } from "../types";
 import {
   adminBackKeyboard,
@@ -123,7 +125,7 @@ export async function handleAdminCallback(
     switch (action.kind) {
       case "menu":
         await ctx.telegram.answerCallbackQuery(query.id);
-        await handleAdminPanel(ctx, chatId, messageId, userId);
+        await showAdminPanel(chatId, userId, ctx.env, messageId);
         break;
 
       case "stats":
@@ -371,6 +373,35 @@ export async function handleAdminPanel(
   await sendOrEdit(ctx.telegram, chatId, messageId, adminPanelText(), {
     reply_markup: adminMenuKeyboard(),
   });
+}
+
+export async function showAdminPanel(
+  chatId: number,
+  userId: number,
+  env: Env,
+  messageId?: number,
+): Promise<void> {
+  const adminIds = String(env.ADMIN_IDS || "")
+    .split(",")
+    .map(id => id.trim())
+    .filter(Boolean);
+
+  if (!adminIds.includes(String(userId))) {
+    const { telegramApi } = await import("../telegram");
+    await telegramApi(env, "sendMessage", {
+      chat_id: String(chatId),
+      text: "❌ Admin access only.",
+    });
+    return;
+  }
+
+  try {
+    await clearAdminState(env, userId);
+  } catch (error) {
+    console.warn("Could not clear admin state.", error);
+  }
+
+  await safeEditOrSend(env, chatId, messageId, adminPanelText(), adminMenuKeyboard());
 }
 
 export async function handleBotStats(
@@ -1334,7 +1365,23 @@ export async function handleSelfTestCommand(ctx: BotContext, message: TelegramMe
   }
   const { ensureSchema } = await import("../db");
   await ensureSchema(ctx.env);
-  await ctx.telegram.sendMessage(message.chat.id, "✅ Self-test completed. Schema self-healing triggered.");
+
+  let results = [];
+  try {
+    const tableInfo = await ctx.env.DB.prepare("PRAGMA table_info(channels)").all();
+    const columns = tableInfo.results.map((r: any) => r.name);
+    results.push(columns.includes("views") ? "✅ channels.views exists" : "❌ channels.views missing");
+    
+    const uaInfo = await ctx.env.DB.prepare("PRAGMA table_info(user_activity)").all();
+    results.push(uaInfo.results.length > 0 ? "✅ user_activity table exists" : "❌ user_activity table missing");
+  } catch (e: any) {
+    results.push("❌ Error checking tables: " + e.message);
+  }
+
+  const text = "🛠 <b>Self-test completed. Schema self-healing triggered.</b>\n\n" + results.join("\n");
+  
+  const { safeEditOrSend } = await import("../telegram");
+  await safeEditOrSend(ctx.telegram, message.chat.id, undefined, text);
 }
 
 export async function handleDebugLastErrorCommand(ctx: BotContext, message: TelegramMessage): Promise<void> {

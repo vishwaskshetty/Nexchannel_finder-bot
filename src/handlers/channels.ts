@@ -1,5 +1,6 @@
 import { getChannel, incrementChannelClicks, isChannelSaved, listSimilarChannels } from "../db";
-import { sendOrEdit } from "../telegram";
+import { sendOrEdit, safeEditOrSend } from "../telegram";
+import { escapeHtml } from "../ui";
 import type { BotContext } from "../types";
 import {
   backToMenuKeyboard,
@@ -140,3 +141,49 @@ export async function handleSimilarChannels(
   }
 }
 
+export async function handleOpenChannelPage(
+  ctx: BotContext,
+  chatId: number | string,
+  messageId: number | undefined,
+  channelId: number,
+  userId: number
+): Promise<void> {
+  const { getChannel, safeIncrementChannelClick } = await import("../db");
+  const channel = await getChannel(ctx.env, channelId);
+  if (!channel) {
+    const { safeEditOrSend } = await import("../telegram");
+    await safeEditOrSend(ctx.telegram, chatId, messageId, "❌ Channel not found.");
+    return;
+  }
+
+  await safeIncrementChannelClick(ctx.env, channelId, userId);
+
+  const joinLink = channel.channel_link || channel.invite_link || (channel.channel_username ? `https://t.me/${channel.channel_username.replace(/^@/, '')}` : null);
+  
+  const text = [
+    "<b>🔗 Open Link</b>",
+    "",
+    "Click below to open this listing:",
+    `📢 <b>Channel:</b> ${escapeHtml(channel.title)}`,
+    `🔗 <b>Link:</b> ${escapeHtml(joinLink || "N/A")}`
+  ].join("\n");
+
+  const buttons = [];
+  if (joinLink) {
+    let btnText = "🔗 Open Channel";
+    if (channel.channel_type === "private") btnText = "🔗 Open Private Link";
+    if (channel.channel_type === "bot") btnText = "🔗 Open Bot";
+    buttons.push([{ text: btnText, url: joinLink }]);
+  }
+
+  buttons.push([
+    { text: "⬅️ Back", callback_data: `channel:${channelId}` },
+    { text: "🏠 Home", callback_data: "home" }
+  ]);
+
+  const { safeEditOrSend } = await import("../telegram");
+  await safeEditOrSend(ctx.telegram, chatId, messageId, text, {
+    reply_markup: { inline_keyboard: buttons },
+    disable_web_page_preview: true
+  });
+}

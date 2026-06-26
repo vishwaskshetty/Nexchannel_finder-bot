@@ -5,7 +5,7 @@ import {
   listChannelsByLanguage,
   countChannelsByLanguage,
 } from "../db";
-import { sendOrEdit } from "../telegram";
+import { safeEditOrSend } from "../telegram";
 import type { BotContext } from "../types";
 import {
   PAGE_SIZE,
@@ -60,7 +60,24 @@ export async function handleCategoryChannels(
   const channels = rows.slice(0, PAGE_SIZE);
   const hasNext = rows.length > PAGE_SIZE;
 
-  await sendOrEdit(
+  if (channels.length === 0 && safePage === 0) {
+    const emptyText = [
+      "<b>😕 No channels found</b>",
+      "",
+      "No approved channels found in this category."
+    ].join("\n");
+    await safeEditOrSend(ctx.telegram, chatId, messageId, emptyText, {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: "📂 Browse Categories", callback_data: "categories" }],
+          [{ text: "🏠 Home", callback_data: "home" }]
+        ]
+      }
+    });
+    return;
+  }
+
+  await safeEditOrSend(
     ctx.telegram,
     chatId,
     messageId,
@@ -77,7 +94,7 @@ export async function handleLanguages(
   chatId: number,
   messageId?: number,
 ): Promise<void> {
-  await sendOrEdit(ctx.telegram, chatId, messageId, languagesText(), {
+  await safeEditOrSend(ctx.telegram, chatId, messageId, languagesText(), {
     reply_markup: languagesKeyboard(),
   });
 }
@@ -106,7 +123,7 @@ export async function handleLanguageChannels(
     keyboard.inline_keyboard.unshift(pagerRows);
   }
 
-  await sendOrEdit(
+  await safeEditOrSend(
     ctx.telegram,
     chatId,
     messageId,
