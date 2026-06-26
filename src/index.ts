@@ -6,6 +6,7 @@ import {
   handleTestReviewChannelCommand,
   isAdminCallbackData,
   handlePendingCommand,
+  showAdminPanel,
 } from "./handlers/admin";
 
 
@@ -13,6 +14,7 @@ import { handleCategories, handleCategoryChannels, handleLanguageChannels, handl
 import { handleChannelDetails, handleRatingPrompt, handleSimilarChannels } from "./handlers/channels";
 import { handleAnalyticsCallback } from "./handlers/analytics";
 import { handleRecommendationsCallback } from "./handlers/recommendations";
+import { approveBatchUI, rejectBatchUI, sendImportPreview, handleImportLinksCommand, handleInlineImportCsvCommand, handleImportTestCommand } from "./handlers/website_import";
 
 import { handleLeaderboard, postWeeklyLeaderboard, publicPostChannel, handleWeeklyLeaderboard, handleSubmitterLeaderboard } from "./handlers/leaderboard";
 import {
@@ -65,12 +67,17 @@ import {
 import {
   handleImportTelegramChannelsCommand,
   handleImportPasteCommand,
-  handleImportCsvCommand,
   handleImportStatsCommand,
   handleBulkAddCommand,
   handleAddChannelCommand,
 } from "./handlers/import";
 import { handleStatsCommand, handleExportCommand } from "./handlers/export";
+import {
+  handleImportSourceCommand,
+  handleImportPreviewCommand,
+  handleImportApproveCommand,
+  handleImportRejectCommand,
+} from "./handlers/website_import";
 
 import {
   handleSetBannerCommand,
@@ -105,6 +112,9 @@ import {
   isAdmin,
   readCommand,
   sendOrEdit,
+  USER_COMMANDS,
+  ADMIN_COMMANDS,
+  setupBotCommands,
 } from "./telegram";
 import type {
   BotContext,
@@ -121,6 +131,46 @@ import {
   forceSubscribeKeyboard,
 } from "./ui";
 import { categorySlugFromKey } from "./categoryKeys";
+import { CRON_CONFIGURED } from "./cron_config";
+
+const ADMIN_COMMAND_NAMES = new Set([
+  "admin",
+  "pending",
+  "stats",
+  "addchannel",
+  "add",
+  "bulkadd",
+  "export",
+  "postleaderboard",
+  "cronstatus",
+  "importsource",
+  "importpreview",
+  "importapprove",
+  "importreject",
+  "selftest",
+  "debug_last_error",
+  "setupcommands",
+  "debugcategories",
+  "debugrecentchannels",
+  "testpost",
+  "checkpostchannel",
+  "testreviewchannel",
+  "checkreviewchannel",
+  "checkyoutube",
+  "checkyt",
+  "resetyoutubeverify",
+  "youtubestatus",
+  "importtelegramchannels",
+  "importpaste",
+  "importstats",
+  "importlinks",
+  "importcsv",
+  "importtest",
+  "setbanner",
+  "banners",
+  "debugbanners",
+  "debugbots"
+]);
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -158,26 +208,14 @@ export default {
     }
   },
 
-  async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
-    void controller;
-    ctx.waitUntil(postScheduledWeeklyLeaderboard(env));
+  async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    try {
+      ctx.waitUntil(postWeeklyLeaderboard(env));
+    } catch (error) {
+      console.error("Scheduled cron error:", error);
+    }
   },
 };
-
-// handleWebhookRequest removed as it is now in fetch
-
-async function postScheduledWeeklyLeaderboard(env: Env): Promise<void> {
-  try {
-    const result = await postWeeklyLeaderboard(env);
-    if (result.status === "empty") {
-      console.log("Weekly leaderboard skipped: no approved channels.");
-    } else if (result.status === "error") {
-      console.error("Scheduled weekly leaderboard post failed:", result.description);
-    }
-  } catch (error) {
-    console.error("Scheduled weekly leaderboard post failed.", error);
-  }
-}
 
 async function handleUpdate(env: Env, update: TelegramUpdate): Promise<void> {
   try {
@@ -225,7 +263,7 @@ async function handlePostLeaderboardCommand(
 ): Promise<void> {
   const userId = message.from?.id;
   if (!userId || !ctx.adminIds.has(userId)) {
-    await ctx.telegram.sendMessage(message.chat.id, "This command is only for admins.");
+    await ctx.telegram.sendMessage(message.chat.id, "❌ Admin only command.");
     return;
   }
 
@@ -247,6 +285,34 @@ async function handlePostLeaderboardCommand(
     message.chat.id,
     `✅ Leaderboard posted to ${publicPostChannel(ctx.env)}.`,
   );
+}
+
+async function handleCronStatusCommand(
+  ctx: BotContext,
+  message: TelegramMessage,
+): Promise<void> {
+  const userId = message.from?.id;
+  if (!userId || !ctx.adminIds.has(userId)) {
+    await ctx.telegram.sendMessage(message.chat.id, "❌ Admin only command.");
+    return;
+  }
+
+  const lines = [
+    "<b>⏰ Cron Status</b>",
+    "",
+    "✅ Worker deployed",
+    "✅ Manual /postleaderboard available",
+    ctx.env.PUBLIC_POST_CHANNEL?.trim() ? "✅ PUBLIC_POST_CHANNEL configured" : "❌ PUBLIC_POST_CHANNEL not configured",
+    "✅ postWeeklyLeaderboard function available"
+  ];
+
+  if (!CRON_CONFIGURED) {
+    lines.push("⚠️ Cron trigger disabled");
+  } else {
+    lines.push("✅ Cron trigger enabled");
+  }
+
+  await ctx.telegram.sendMessage(message.chat.id, lines.join("\n"), { parse_mode: "HTML" });
 }
 
 async function handleTestPostCommand(ctx: BotContext, message: TelegramMessage): Promise<void> {
@@ -381,6 +447,48 @@ async function handleMessage(ctx: BotContext, message: TelegramMessage): Promise
       return;
     }
 
+    if (command && ADMIN_COMMAND_NAMES.has(command.name)) {
+      const userId = message.from?.id;
+      if (!userId || !ctx.adminIds.has(userId)) {
+        await ctx.telegram.sendMessage(message.chat.id, "❌ Admin only command.");
+        return;
+      }
+    }
+
+    if (command?.name === "setupcommands") {
+      await setupBotCommands(ctx.env);
+      await ctx.telegram.sendMessage(
+        message.chat.id,
+        "✅ Bot command menu updated.\nAdmin commands are visible only to admins."
+      );
+      return;
+    }
+
+    if (command?.name === "cronstatus") {
+      await handleCronStatusCommand(ctx, message);
+      return;
+    }
+
+    if (command?.name === "commands") {
+      const userId = message.from?.id;
+      const isUserAdmin = userId ? ctx.adminIds.has(userId) : false;
+      const commandsList = isUserAdmin ? ADMIN_COMMANDS : USER_COMMANDS;
+      const text = commandsList.map(c => `/${c.command} - ${c.description}`).join("\n");
+      await ctx.telegram.sendMessage(message.chat.id, text);
+      return;
+    }
+
+    if (command?.name === "inline") {
+      const botData = await ctx.telegram.getMe();
+      const botUsername = botData.ok && botData.result?.username ? botData.result.username : "NexChannelFinderBot";
+      await ctx.telegram.sendMessage(
+        message.chat.id,
+        `🔎 <b>Inline Search Help</b>\n\nYou can search for channels directly from any chat without opening the bot!\n\n<b>How to use:</b>\n1. Type <code>@${botUsername}</code> in any message field.\n2. Space and type your search query (e.g., <code>@${botUsername} python</code>).\n3. Tap on any result to share/view it.`,
+        { parse_mode: "HTML" }
+      );
+      return;
+    }
+
   if (command?.name === "debugcategories") {
     await handleDebugCategoriesCommand(ctx, message);
     return;
@@ -417,7 +525,7 @@ async function handleMessage(ctx: BotContext, message: TelegramMessage): Promise
   }
 
   if (command?.name === "admin") {
-    await handleAdminPanel(ctx, message.chat.id, undefined, message.from?.id ?? 0);
+    await showAdminPanel(message.chat.id, message.from?.id ?? 0, ctx.env);
     return;
   }
 
@@ -458,10 +566,7 @@ async function handleMessage(ctx: BotContext, message: TelegramMessage): Promise
     await handleImportPasteCommand(ctx, message);
     return;
   }
-  if (command?.name === "importcsv") {
-    await handleImportCsvCommand(ctx, message);
-    return;
-  }
+
   if (command?.name === "importstats") {
     await handleImportStatsCommand(ctx, message);
     return;
@@ -485,6 +590,38 @@ async function handleMessage(ctx: BotContext, message: TelegramMessage): Promise
   // --- Stats ---
   if (command?.name === "stats") {
     await handleStatsCommand(ctx, message);
+    return;
+  }
+  if (command?.name === "importstats") {
+    await handleImportStatsCommand(ctx, message);
+    return;
+  }
+  if (command?.name === "importlinks") {
+    await handleImportLinksCommand(ctx, message);
+    return;
+  }
+  if (command?.name === "importcsv") {
+    await handleInlineImportCsvCommand(ctx, message);
+    return;
+  }
+  if (command?.name === "importtest") {
+    await handleImportTestCommand(ctx, message);
+    return;
+  }
+  if (command?.name === "importsource") {
+    await handleImportSourceCommand(ctx, message);
+    return;
+  }
+  if (command?.name === "importpreview") {
+    await handleImportPreviewCommand(ctx, message);
+    return;
+  }
+  if (command?.name === "importapprove") {
+    await handleImportApproveCommand(ctx, message);
+    return;
+  }
+  if (command?.name === "importreject") {
+    await handleImportRejectCommand(ctx, message);
     return;
   }
 
@@ -560,16 +697,24 @@ async function handleMessage(ctx: BotContext, message: TelegramMessage): Promise
 
   switch (command.name) {
     case "help":
-      await handleHelp(ctx, message.chat.id);
+      await handleHelp(ctx, message.chat.id, undefined, message.from?.id);
       break;
     case "categories":
       await handleCategories(ctx, message.chat.id);
       break;
+    case "language":
     case "languages":
       await handleLanguages(ctx, message.chat.id);
       break;
     case "saved":
+    case "mysaved":
       await handleSavedChannels(ctx, message.chat.id, undefined, message.from?.id ?? 0);
+      break;
+    case "trending":
+      await showSectionPage(ctx, message.chat.id, undefined, "top", 0, message);
+      break;
+    case "recommend":
+      await handleRecommendationsCallback(ctx, message.chat.id, undefined, message.from?.id ?? 0);
       break;
     case "leaderboard":
       await handleLeaderboard(ctx, message.chat.id);
@@ -745,18 +890,14 @@ async function handleCallbackQuery(ctx: BotContext, query: TelegramCallbackQuery
     return;
   }
 
-  if (data.startsWith("open_channel:")) {
-    const channelId = numberAfterPrefix(data, "open_channel:");
-    const channel = await getChannel(ctx.env, channelId);
-    if (channel) {
-      const joinLink = channel.channel_link || channel.invite_link || (channel.channel_username ? `https://t.me/${channel.channel_username.replace(/^@/, '')}` : null);
-      if (joinLink) {
-        await incrementChannelClicks(ctx.env, channelId, userId);
-        await ctx.telegram.answerCallbackQuery(query.id, undefined, false, joinLink);
-        return;
-      }
-    }
-    await ctx.telegram.answerCallbackQuery(query.id, "Link not available.", true);
+  if (data.startsWith("open_channel:") || data.startsWith("open:")) {
+    await ctx.telegram.answerCallbackQuery(query.id);
+    const prefix = data.startsWith("open_channel:") ? "open_channel:" : "open:";
+    const channelId = numberAfterPrefix(data, prefix);
+    
+    // Lazy import to avoid cycle if necessary, but we can import at top.
+    const { handleOpenChannelPage } = await import("./handlers/channels");
+    await handleOpenChannelPage(ctx, chatId, messageId, channelId, userId);
     return;
   }
 
@@ -833,7 +974,7 @@ async function handleCallbackQuery(ctx: BotContext, query: TelegramCallbackQuery
   }
 
   if (data === "help") {
-    await handleHelp(ctx, chatId, messageId);
+    await handleHelp(ctx, chatId, messageId, userId);
     return;
   }
 
@@ -852,12 +993,12 @@ async function handleCallbackQuery(ctx: BotContext, query: TelegramCallbackQuery
     return;
   }
 
-  if (data === "weeklyleaderboard" || data === "back:weeklyleaderboard") {
+  if (data === "weeklyleaderboard" || data === "weekly_leaderboard" || data === "back:weeklyleaderboard") {
     await handleWeeklyLeaderboard(ctx, chatId, messageId, query.message);
     return;
   }
 
-  if (data === "submitterleaderboard" || data === "back:submitterleaderboard") {
+  if (data === "submitterleaderboard" || data === "submitter_leaderboard" || data === "back:submitterleaderboard") {
     await handleSubmitterLeaderboard(ctx, chatId, messageId, query.message);
     return;
   }
@@ -984,6 +1125,27 @@ async function handleCallbackQuery(ctx: BotContext, query: TelegramCallbackQuery
   if (data.startsWith("similar:")) {
     const channelId = numberAfterPrefix(data, "similar:");
     await handleSimilarChannels(ctx, chatId, messageId, channelId);
+    return;
+  }
+
+  if (data.startsWith("import_preview:")) {
+    const batchId = data.slice("import_preview:".length);
+    await ctx.telegram.answerCallbackQuery(query.id);
+    await sendImportPreview(ctx, chatId, batchId);
+    return;
+  }
+  
+  if (data.startsWith("import_approve:")) {
+    const batchId = data.slice("import_approve:".length);
+    await ctx.telegram.answerCallbackQuery(query.id);
+    await approveBatchUI(ctx, chatId, batchId);
+    return;
+  }
+  
+  if (data.startsWith("import_reject:")) {
+    const batchId = data.slice("import_reject:".length);
+    await ctx.telegram.answerCallbackQuery(query.id);
+    await rejectBatchUI(ctx, chatId, batchId);
     return;
   }
 

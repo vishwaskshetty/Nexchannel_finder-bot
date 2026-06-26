@@ -3,6 +3,9 @@ main = "src/index.ts"
 compatibility_date = "2026-06-18"
 compatibility_flags = ["nodejs_compat"]
 
+[build]
+command = "node build-cron-config.js"
+
 [observability]
 enabled = true
 head_sampling_rate = 1
@@ -40,5 +43,8 @@ LEADERBOARD_BANNER_FILE_ID = ""
 
 # Runs Sunday 7:00 PM IST
 
-[triggers]
-crons = ["30 13 * * 0"]
+
+
+# If trigger deploy fails, temporarily comment this section and deploy:
+# [triggers]
+# crons = ["30 13 * * 0"]
